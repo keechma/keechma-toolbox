@@ -37,7 +37,7 @@
 (extend-type default
   IForm
   (get-data [_ _ _] {})
-  (submit-data [_ _ _ _])
+  (submit-data [_ _ _ data] data)
   (process-in [_ _ _ data] data)
   (process-out [_ _ _ data] data)
   (process-attr-with [_ _ _ _ _ _])

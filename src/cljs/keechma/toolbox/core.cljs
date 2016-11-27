@@ -32,7 +32,6 @@
 (def format-percentage
   ^{:format-chars #{"%"}}
   (fn [value _]
-    (println "VALUE" value (get-percentage value))
     (if (or (nil? value) (empty? value))
       "0%"
       (str (.toFixed (get-percentage value) 2) "%"))))
@@ -50,7 +49,7 @@
     (user-validator data))
   (format-attr-with [_ _ _ _ path _]
     (when (= [:percentage] path)
-      format-percentage)))
+      format-tax-id)))
 
 (def app-forms
   {:user (->UserForm)})
@@ -65,7 +64,7 @@
 (defn user-form-render [ctx form-props]
   (fn []
     (let [form-state @(forms-helpers/form-state ctx form-props)
-          {:keys [on-change on-blur]} (forms-helpers/make-component-helpers ctx form-props)]
+          {:keys [on-change on-blur validate set-value submit]} (forms-helpers/make-component-helpers ctx form-props)]
       (println form-state)
       (when form-state
         [:div
@@ -75,7 +74,12 @@
          [:br]
          [:input {:on-change (on-change :percentage)
                   :on-blur (on-blur :percentage)
-                  :value (forms-helpers/attr-get-in form-state :percentage)}]]))))
+                  :value (forms-helpers/attr-get-in form-state :percentage)}]
+         [:br]
+         [:button {:on-click #(set-value :username "TEST")} "SET USERNAME"]
+         [:button {:on-click #(validate true)} "VALIDATE"]
+         [:br]
+         [:button {:on-click #(submit)} "SUBMIT"]]))))
 
 (def user-form-component
   (ui/constructor

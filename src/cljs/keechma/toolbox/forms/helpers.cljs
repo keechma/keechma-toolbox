@@ -24,6 +24,9 @@
 (defn attr-valid? [form-state path]
   (nil? (get-in (:errors form-state) (keechma-forms-util/key-to-path path))))
 
+(defn form-has-errors? [form-state]
+  (not (empty? (:errors form-state))))
+
 (defn mark-dirty-paths
   ([form-state dirty-paths] (mark-dirty-paths form-state dirty-paths false))
   ([form-state dirty-paths cache?]
@@ -37,14 +40,24 @@
   (set (keechma-forms-core/errors-keypaths errors)))
 
 
+
+
 (defn make-component-helpers [ctx form-props]
   {:on-change (fn [path]
                 (let [path (keechma-forms-util/key-to-path path)]
                   (fn [e]
                     (let [el (.-target e)
-                          value (.-value el)]
-                      (ui/send-command ctx :on-change [form-props path el value])))))
+                          value (.-value el)
+                          caret-pos (if (= "text" (.-type el)) (.-selectionStart el) nil)]
+                      (ui/send-command ctx :on-change [form-props path el value caret-pos])))))
    :on-blur (fn [path]
                 (let [path (keechma-forms-util/key-to-path path)]
                   (fn [e]
-                    (ui/send-command ctx :on-blur [form-props path e]))))})
+                    (ui/send-command ctx :on-blur [form-props path]))))
+   :validate (fn [& args]
+               (let [dirty-only? (or (first args) false)]
+                 (ui/send-command ctx :on-validate [form-props dirty-only?])))
+   :set-value (fn [path value]
+                (ui/send-command ctx :on-change [form-props path nil value nil]))
+   :submit (fn []
+             (ui/send-command ctx :on-submit form-props))})

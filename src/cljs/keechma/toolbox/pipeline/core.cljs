@@ -13,10 +13,12 @@
 (defprotocol ISideffect
   (call! [this controller ops app-db-atom]))
 
-(defrecord CommitSideffect [value]
+(defrecord CommitSideffect [value cb]
   ISideffect
   (call! [this _ _ app-db-atom]
-    (reset! app-db-atom (:value this))))
+    (let [cb (:cb this)]
+      (reset! app-db-atom (:value this))
+      (when cb (cb)))))
 
 (defrecord SendCommandSideffect [command payload]
   ISideffect
@@ -46,8 +48,10 @@
     (let [exclusive! (:exclusive! ops)]
       (exclusive!))))
 
-(defn commit! [value]
-  (->CommitSideffect value))
+(defn commit!
+  ([value] (commit! value nil))
+  ([value cb]
+   (->CommitSideffect value cb)))
 
 (defn execute! [command payload]
   (->ExecuteSideffect command payload))
