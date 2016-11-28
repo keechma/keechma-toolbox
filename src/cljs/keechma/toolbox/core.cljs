@@ -41,13 +41,21 @@
                                 false
                                 (not (empty? v))))])
 
-(def user-validator (v/validator {:username [not-empty?]}))
+(def user-validator (v/validator {:username [not-empty?]
+                                  :type [not-empty?]}))
 
-(defrecord UserForm []
+(deftype UserForm []
   forms-core/IForm
+  (process-in [_ _ _ _]
+    {:username "retro"})
   (validate [_ data]
     (user-validator data))
-  (format-attr-with [_ _ _ _ path _]
+  (process-attr-with [_ path]
+    (if (= path [:foo])
+      (fn [_ _ form-state _ _]
+        (assoc form-state :cached-dirty-paths
+               (set (concat #{:baz :qux} (:cached-dirty-paths form-state)))))))
+  (format-attr-with [_ path]
     (when (= [:percentage] path)
       format-tax-id)))
 
@@ -65,19 +73,34 @@
   (fn []
     (let [form-state @(forms-helpers/form-state ctx form-props)
           {:keys [on-change on-blur validate set-value submit]} (forms-helpers/make-component-helpers ctx form-props)]
-      (println form-state)
       (when form-state
         [:div
+         (when (and (forms-helpers/form-submit-attempted? form-state)
+                    (forms-helpers/form-invalid? form-state))
+           [:div {:style {:color "red"}} "Please fix the errors"])
          [:input {:on-change (on-change :username)
                   :on-blur (on-blur :username)
                   :value (forms-helpers/attr-get-in form-state :username)}]
+         (when-let [e (forms-helpers/attr-errors form-state :username)]
+           [:div {:style {:color "orange" :padding "10px" :border "1px solid orange"}}
+            (str/join ", " (get-in e [:$errors$ :failed]))])
+         [:br]
+         [:select {:on-change (on-change :type)
+                   :on-blur (on-blur :type)
+                   :value (or (forms-helpers/attr-get-in form-state :type) "")}
+          [:option {:value ""} "-"]
+          [:option {:value "bar"} "Bar"]]
+         (when-let [e (forms-helpers/attr-errors form-state :type)]
+           [:div {:style {:color "orange" :padding "10px" :border "1px solid orange"}}
+            (str/join ", " (get-in e [:$errors$ :failed]))])
          [:br]
          [:input {:on-change (on-change :percentage)
                   :on-blur (on-blur :percentage)
                   :value (forms-helpers/attr-get-in form-state :percentage)}]
          [:br]
-         [:button {:on-click #(set-value :username "TEST")} "SET USERNAME"]
-         [:button {:on-click #(validate true)} "VALIDATE"]
+         [:button {:on-click #(set-value :username "")} "SET USERNAME"]
+         [:button {:on-click #(set-value :foo "TEST")} "SET FOO"]
+         [:button {:on-click #(validate)} "VALIDATE"]
          [:br]
          [:button {:on-click #(submit)} "SUBMIT"]]))))
 
