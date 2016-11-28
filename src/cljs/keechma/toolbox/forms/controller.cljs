@@ -6,6 +6,7 @@
             [keechma.toolbox.forms.cursor :as cursor]
             [forms.dirty :refer [calculate-dirty-fields]]
             [forms.core :as keechma-core]
+            [forms.util :as keechma-forms-util]
             [promesa.core :as p]
             [reagent.core :as reagent]))
 
@@ -33,15 +34,23 @@
     (->> (p/promise (core/get-data form-record app-db form-props))
          (p/map #(assoc value :initial-data %1)))))
 
+(defn should-immediately-validate? [attr-valid? element]
+  (cond
+    (not attr-valid?) true
+    (nil? element) true
+    (= "text" (.-type element)) false
+    (= "textarea" (.-tagName element)) false
+    :else true))
+
 (defn premount-form [app-db {:keys [form-props]}]
   (add-form-to-app-db app-db form-props
-                      {:submitted? false
+                      {:submit-attempted? false
                        :dirty-paths (set {})
                        :cached-dirty-paths (set {})
                        :data {}
                        :initial-data {}
                        :errors {}
-                       :status {:type :mounting}}))
+                       :state {:type :mounting}}))
 
 (defn mount-form [app-db forms-config {:keys [form-props initial-data]}]
   (let [form-record (get-form-record forms-config form-props)
@@ -51,13 +60,14 @@
               (assoc form-state
                      :initial-data processed-data
                      :data processed-data
-                     :status {:type :mounted}))))
+                     :state {:type :mounted}))))
 
-(defn mount-failed [app-db forms-config error {:keys [form-props]}]
+(defn update-form-state [app-db forms-config type cause {:keys [form-props]}]
   (let [form-state (get-form-state app-db form-props)]
-    (assoc-in app-db [:kv core/id-key :states form-props :status]
-              {:type :mount-failed
-               :cause (:payload error)})))
+    (assoc-in app-db [:kv core/id-key :states form-props :state]
+              (if cause
+                {:type type :cause cause}
+                {:type type}))))
 
 (defn mark-dirty-and-validate
   ([form-record form-state] (mark-dirty-and-validate form-record form-state true))
@@ -77,21 +87,22 @@
               :cached-dirty-paths (set (concat cached-dirty-paths dirty-paths)))))))
 
 (defn handle-on-change [app-db forms-config [form-props path element value caret-pos]]
-  (let [form-state (get-form-state app-db form-props)
+  (let [path (keechma-forms-util/key-to-path path)
+        form-state (get-form-state app-db form-props)
         form-record (get-form-record forms-config form-props)
         old-value (helpers/attr-get-in form-state path)
-        formatter (core/format-attr-with form-record app-db form-props form-state path value)
+        formatter (core/format-attr-with form-record path)
         formatted-value (if formatter (formatter value old-value) value)
-        processor (core/process-attr-with form-record app-db form-props form-state path formatted-value)
+        processor (core/process-attr-with form-record path)
         new-state (if processor
                     (processor app-db form-props form-state path formatted-value)
                     (helpers/attr-assoc-in form-state path formatted-value))
         attr-valid? (helpers/attr-valid? form-state path)]
     
     [(assoc-in app-db [:kv core/id-key :states form-props]
-                (if attr-valid?
-                  new-state
-                  (mark-dirty-and-validate form-record new-state)))
+                (if (should-immediately-validate? attr-valid? element)
+                  (mark-dirty-and-validate form-record new-state)
+                  new-state))
      (when (and element formatter caret-pos)
        (fn []
          (cursor/set-caret-pos! element
@@ -119,9 +130,9 @@
         form-state (get-form-state app-db form-props)
         form-record (get-form-record forms-config form-props)
         new-form-state (assoc (mark-dirty-and-validate form-record form-state false)
-                              :submitted? true)
+                              :submit-attempted? true)
         new-app-db (assoc-in app-db [:kv core/id-key :states form-props] new-form-state)]
-    (if (helpers/form-has-errors? new-form-state)
+    (if (helpers/form-invalid? new-form-state)
       (pp/commit! new-app-db)
       (pp/do!
        (pp/commit! new-app-db)
@@ -130,8 +141,9 @@
 (defn submit-form [app-db forms-config data]
   (let [form-props (:form-props data)
         form-state (get-form-state app-db form-props)
-        form-record (get-form-record forms-config form-props)]
-    (->> (p/promise (core/submit-data form-record app-db form-props (:data form-state)))
+        form-record (get-form-record forms-config form-props)
+        processed-data (core/process-out form-record app-db form-props (:data form-state))]
+    (->> (p/promise (core/submit-data form-record app-db form-props processed-data))
          (p/map #(assoc data :result %1)))))
 
 (defn handle-on-submit-success [app-db forms-config {:keys [form-props result]}]
@@ -152,12 +164,17 @@
                        (get-initial-state app-db forms-config value)
                        (pp/commit! (mount-form app-db forms-config value)))
                 (rescue [_ error value app-db]
-                        (pp/commit! (mount-failed app-db forms-config error value))))
+                        (pp/commit! (update-form-state app-db forms-config
+                                                       :mount-failed (:payload error) value))))
    :submit-form (pipeline->
                  (begin [_ value app-db]
                         (submit-form app-db forms-config value)
+                        (pp/commit! (update-form-state app-db forms-config
+                                                       :submitted nil value))
                         (handle-on-submit-success app-db forms-config value))
                  (rescue [_ error value app-db]
+                         (pp/commit! (update-form-state app-db forms-config
+                                                       :submit-failed (:payload error) value))
                          (handle-on-submit-error app-db forms-config error value)))
    :on-change (pipeline->
                (begin [_ value app-db]
