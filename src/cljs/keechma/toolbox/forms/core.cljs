@@ -12,9 +12,16 @@
     "This function should return the processed incoming data (returned from the `get-data`) function. Use it to prepare the incoming data for the form.")
   (process-out [this app-db form-props data]
     "This function should return the processed outgoing data that will be passed to the `submit-data` function.")
-  (process-attr-with [this app-db form-props form-state path value]
-    "This function should return a processing function that can process the new value and return the new form state. If the processing function is returned, data will not be set in the `form-state` `:data` map. It should be done manually.")
-  (format-attr-with [this app-db form-props form-state path value]
+  (process-attr-with [this path]
+    "This function should return a processing function that can process the new value and return the new form state. If the processing function is returned, data will not be set in the `form-state` `:data` map. It should be done manually.
+
+    Processor functions should look like this, and they should return a new version of a form-state:
+
+    ```
+    (fn [app-db form-props form-state path value]
+      form-state)
+    ```")
+  (format-attr-with [this path]
     "This function should return a formatting function that can be used to format the value if applicable.
      
      Formatting functions should look like this:
@@ -40,8 +47,8 @@
   (submit-data [_ _ _ data] data)
   (process-in [_ _ _ data] data)
   (process-out [_ _ _ data] data)
-  (process-attr-with [_ _ _ _ _ _])
-  (format-attr-with [_ _ _ _ _ _])
+  (process-attr-with [_ _])
+  (format-attr-with [_ _])
   (on-submit-error [_ _ _ _ _])
   (on-submit-success [_ _ _ _])
   (validate [this data]
