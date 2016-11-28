@@ -21,11 +21,26 @@
 (defn attr-get-in [form-state path]
   (get-in (:data form-state) (keechma-forms-util/key-to-path path)))
 
-(defn attr-valid? [form-state path]
-  (nil? (get-in (:errors form-state) (keechma-forms-util/key-to-path path))))
+(defn attr-errors [form-state path]
+  (let [path (keechma-forms-util/key-to-path path)
+        is-dirty? (contains? (:dirty-paths form-state) path)]
+    (when is-dirty?
+      (get-in (:errors form-state) path))))
 
-(defn form-has-errors? [form-state]
-  (not (empty? (:errors form-state))))
+(defn attr-valid? [form-state path]
+  (nil? (attr-errors form-state path)))
+
+(defn form-errors [form-state]
+  (:errors form-state))
+
+(defn form-valid? [form-state]
+  (empty? (:errors form-state)))
+
+(defn form-invalid? [form-state]
+  (not (form-valid? form-state)))
+
+(defn form-submit-attempted? [form-state]
+  (:submit-attempted? form-state))
 
 (defn mark-dirty-paths
   ([form-state dirty-paths] (mark-dirty-paths form-state dirty-paths false))
@@ -38,9 +53,6 @@
 
 (defn errors->paths [errors]
   (set (keechma-forms-core/errors-keypaths errors)))
-
-
-
 
 (defn make-component-helpers [ctx form-props]
   {:on-change (fn [path]
