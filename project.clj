@@ -7,7 +7,10 @@
                  [devcards "0.2.2" :exclusions [cljsjs/react]]
                  [garden "1.3.2"]
                  [funcool/promesa "1.6.0"]
-                 [keechma/forms "0.1.2"]]
+                 [keechma/forms "0.1.2"]
+
+                 [cljs-ajax "0.5.8"]
+                 ]
 
   :min-lein-version "2.5.3"
 

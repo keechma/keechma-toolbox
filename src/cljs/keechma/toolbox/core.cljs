@@ -10,13 +10,21 @@
    [clojure.string :as str]
    [keechma.toolbox.forms.controller :as forms-controller]
    [keechma.toolbox.pipeline.controller :as pp-controller]
-   [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline->]]
+   [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline-> pipeline!]]
    [promesa.core :as p]
    [promesa.impl.promise :as pimpl]
    [keechma.toolbox.forms.helpers :as forms-helpers]
    [keechma.toolbox.forms.core :as forms-core]
    [forms.validator :as v]
-   [clojure.string :as str]))
+   [clojure.string :as str]
+   [ajax.core :refer [GET abort]]))
+
+(defn movie-search [title]
+  (p/promise (fn [resolve reject on-cancel]
+               (let [req (GET (str "https://www.omdbapi.com/?s=" title)
+                              {:handler resolve
+                               :error-handler reject})]
+                 (on-cancel #(abort req))))))
 
 (def format-tax-id
   ^{:format-chars #{"-"}}
@@ -110,21 +118,47 @@
     :subscription-deps [:form-state]
     :topic forms-core/id-key}))
 
+(defn search-render [ctx]
+  [:div {:style {:border-bottom "10px solid gray" :padding-bottom "10px" :margin-bottom "10px"}}
+   [:input {:on-change #(ui/send-command ctx :search (.. % -target -value))}]])
+
+(def search-component
+  (ui/constructor
+   {:renderer search-render
+    :topic :search}))
+
 (defn main-render [ctx]
   [:div
    [:h1 "Forms"]
    [:hr]
+   [(ui/component ctx :search)]
    [(ui/component ctx :user-form) [:user :form]]])
 
 (def main-component
   (ui/constructor
    {:renderer main-render
-    :component-deps [:user-form]}))
+    :component-deps [:user-form :search]}))
+
+(defn delay-pipeline [ms]
+  (p/promise (fn [resolve _] (js/setTimeout resolve ms))))
+
+(def search-controller
+  (pp-controller/constructor2
+   (fn [] true)
+   {:search (pp/exclusive
+             (pipeline! [value app-db]
+               (when-not (empty? value)
+                 (pipeline! [value app-db]
+                   (delay-pipeline 500)
+                   (movie-search value)
+                   (println "SEARCH!!!1" value)))))}))
 
 (def app-definition
   {:components    {:main main-component
-                   :user-form user-form-component}
-   :controllers   (-> {:user-form user-form-controller}
+                   :user-form user-form-component
+                   :search search-component}
+   :controllers   (-> {:user-form user-form-controller
+                       :search search-controller}
                       (forms-controller/register app-forms))
    :subscriptions {:form-state forms-helpers/form-state-sub}
    :html-element  (.getElementById js/document "app")})

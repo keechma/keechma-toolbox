@@ -50,12 +50,8 @@
 
 
 
-(declare expand-pipeline)
-
 (defn expand-body [args body]
-  (into [] (map (fn [f]
-                  (let [processed-form (prewalk expand-pipeline f)]
-                     `(fn ~args ~processed-form))) body)))
+  (into [] (map (fn [f] `(fn ~args ~f)) body)))
 
 (defn begin-forms [acc {:keys [begin-args begin-body]}]
   (if (not= 2 (count begin-args))
@@ -69,18 +65,6 @@
       (throw (ex-info "Pipeline catch block takes exactly one argument: error" {}))
       (assoc acc :rescue (expand-body (into [] (concat begin-args rescue-args)) rescue-body)))))
 
-(defn make-inline-pipeline [args body]
-  (let [pipeline-parts (extract-pipeline-parts args body)]
-    (-> {:pipeline? true}
-        (begin-forms pipeline-parts)
-        (rescue-forms pipeline-parts))))
-
-(defn expand-pipeline [form]
-  (if (and (seq? form) (= `pipeline! (first form)))
-    (let [pipeline (rest form)]
-      (make-inline-pipeline (first pipeline) (rest pipeline)))
-    form))
-
 (defn make-pipeline [args body]
   (let [pipeline-parts (extract-pipeline-parts args body)]
     `(keechma.toolbox.pipeline.core/make-pipeline2
@@ -90,10 +74,3 @@
 
 (defmacro pipeline! [args & body]
   (make-pipeline args body))
-
-
-#_(pipeline! [value appdb]
-           (api/foo value)
-           (pp/commit! (foo app-db))
-           (rescue! [error]
-                    (some/rescue foo)))

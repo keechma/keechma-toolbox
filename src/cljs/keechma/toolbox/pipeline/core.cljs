@@ -132,48 +132,69 @@
 
 (declare run-pipeline2)
 
-(defn action-or-pipeline [action is-running? ctrl app-db-atom value]
-  (if (:pipeline? action)
-    (run-pipeline2 action is-running? ctrl app-db-atom value)
-    action))
+(defn action-ret-val2 [action ctrl app-db-atom value error]
+  (try
+    (let [ret-val (if (nil? error) (action value @app-db-atom) (action error value @app-db-atom))]
+      (if (:pipeline? (meta ret-val))
+        {:value (ret-val ctrl app-db-atom value)
+         :promise? true}
+        {:value ret-val
+         :promise? (is-promise? ret-val)}))
+    (catch :default err
+      (cond
+        (or (instance? ExceptionInfo err) (instance? js/Error err)) (throw err)
+        :else  {:value (process-error err)
+                :promise? false}))))
 
 (defn extract-nil [value]
   (if (= ::nil value) nil value))
 
-(defn run-pipeline2 [pipeline is-running? ctrl app-db-atom value]
-  (let [{:keys [begin rescue] pipeline}]
+(defn run-pipeline2 [pipeline ctrl app-db-atom value] 
+  (let [{:keys [begin rescue]} pipeline
+        current-promise (atom nil)
+        ops {} ;; REMOVE THIS WHEN REMOVING PIPELINE v1
+        ]
     (p/promise
      (fn [resolve reject on-cancel]
-       (on-cancel #(reset is-running? false))
+       (on-cancel (fn []
+                    (let [c @current-promise]
+                      (when (p/pending? c)
+                        (p/cancel! c)))))
        (go-loop [block :begin
                  actions begin
-                 value value
+                 prev-value value
                  error nil]
-         (when @is-running?
-           (if (not (seq actions))
-             (if (= :begin running)
-               (resolve value)
-               (reject error))
-             (let [next (action-or-pipeline (first actions) is-running? ctrl app-db-atom value)
-                   {:keys [value promise?]} (action-ret-val next value error @app-db-atom)
-                   sideffect? (satisfies? ISideffect value)
+         (if (not (seq actions))
+           (if (= :begin block)
+             (resolve value)
+             (reject error))
+           (let [next (first actions)
+                 {:keys [value promise?]} (action-ret-val2 next ctrl app-db-atom prev-value error)]
+             (when promise?
+               (reset! current-promise value))
+             (let [sideffect? (satisfies? ISideffect value)
                    resolved-value (if promise? (extract-nil (<! (promise->chan value))) value)
                    error? (instance? Error resolved-value)]
-               (when @is-running?
-                 (when (and promise? sideffect?)
-                   (throw (ex-info (:async-sideffect pipeline-errors) {})))
-                 (when sideffect?
-                   (call! resolved-value ctrl ops app-db-atom))
-                 (cond
-                   (and error? (= block :begin)) (recur :rescue rescue value resolved-value)
-                   (and error? (= block :rescue)) (reject error)
-                   sideffect? (recur block (drop 1 actions) value error)
-                   :else (recur block
-                                (drop 1 actions)
-                                (if (nil? resolved-value) value resolved-value)
-                                error)))))))))))
-
-
+               (when (and promise? sideffect?)
+                 (throw (ex-info (:async-sideffect pipeline-errors) {})))
+               (when sideffect?
+                 (call! resolved-value ctrl ops app-db-atom))
+               (cond
+                 (and error? (= block :begin)) (recur :rescue rescue prev-value resolved-value)
+                 (and error? (= block :rescue)) (reject error)
+                 sideffect? (recur block (rest actions) value error)
+                 :else (recur block
+                              (rest actions)
+                              (if (nil? resolved-value) prev-value resolved-value)
+                              error))))))))))
 
 (defn make-pipeline2 [pipeline]
-  (partial run-pipeline2 pipeline (atom true)))
+  (with-meta (partial run-pipeline2 pipeline) {:pipeline? true}))
+
+(defn exclusive [pipeline]
+  (let [current (atom nil)]
+    (fn [ctrl app-db-atom value]
+      (let [c @current]
+        (when (and c (p/pending? c))
+          (p/cancel! c))
+        (reset! current (pipeline ctrl app-db-atom value))))))
