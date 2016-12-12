@@ -42,12 +42,6 @@
       (doseq [s sideffects]
         (call! s controller ops app-db-atom)))))
 
-(defrecord ExclusivePipelineSideffect []
-  ISideffect
-  (call! [this _ ops _]
-    (let [exclusive! (:exclusive! ops)]
-      (exclusive!))))
-
 (defn commit!
   ([value] (commit! value nil))
   ([value cb]
@@ -65,9 +59,6 @@
 (defn do! [& sideffects]
   (->DoSideffect sideffects))
 
-(defn exclusive! []
-  (->ExclusivePipelineSideffect))
-
 (defn process-error [err]
   (cond
     (instance? Error err) err
@@ -75,17 +66,6 @@
 
 (defn is-promise? [val]
   (= Promise (type val)))
-
-(defn action-ret-val [action context value error app-db]
-  (try
-    (let [ret-val (if (nil? error) (action context value app-db) (action context error value app-db))]
-      {:value ret-val
-       :promise? (is-promise? ret-val)})
-    (catch :default err
-      (cond
-        (or (instance? ExceptionInfo err) (instance? js/Error err)) (throw err)
-        :else  {:value (process-error err)
-                :promise? false}))))
 
 (defn promise->chan [promise]
   (let [promise-chan (chan)]
@@ -95,44 +75,11 @@
     promise-chan))
 
 (def pipeline-errors
-  {:async-sideffect "Returning sideffects from promises is not permitted. It is possible that application state was modified in the meantime"
-   :rescue-missing "Unable to proceed with the pipeline. Rescue block is missing."
-   :rescue-errors "Unable to proceed with the pipeline. Error was thrown in rescue block"})
+  {:async-sideffect "Returning sideffects from promises is not permitted. It is possible that application state was modified in the meantime"})
 
-(defn run-pipeline [pipeline ops ctrl app-db-atom value]
-  (let [{:keys [begin rescue]} pipeline
-        pipeline-context (or (:pipeline-context ctrl) {})]
-    ((:register! ops))
-    (go-loop [actions begin
-              val value
-              error nil
-              running :begin]
-      (if (and (pos? (count actions)) ((:running? ops)))
-        (let [next (first actions)
-              {:keys [value promise?]} (action-ret-val next pipeline-context val error @app-db-atom)
-              sideffect? (satisfies? ISideffect value)
-              resolved (if sideffect? value (<! (promise->chan (p/promise value))))
-              resolved-value (if (= ::nil resolved) nil resolved)
-              error? (instance? Error resolved-value)]
-          (when (and promise? sideffect?)
-            (throw (ex-info (:async-sideffect pipeline-errors) {})))
-          (when sideffect?
-            (call! resolved-value ctrl ops app-db-atom))
-          (cond
-            (and error? (= running :begin)) (if (pos? (count rescue))
-                                              (recur rescue val resolved-value :rescue)
-                                              (throw (ex-info (:rescue-missing pipeline-errors) resolved-value)))
-            (and error? (= running :rescue)) (throw (ex-info (:rescue-error pipeline-errors) resolved-value))
-            sideffect? (recur (drop 1 actions) val error :begin)
-            :else (recur (drop 1 actions) (if (nil? resolved-value) val resolved-value) error :begin)))
-        ((:stop! ops))))))
+(declare run-pipeline)
 
-(defn make-pipeline [pipeline]
-  (partial run-pipeline pipeline))
-
-(declare run-pipeline2)
-
-(defn action-ret-val2 [action ctrl app-db-atom value error]
+(defn action-ret-val [action ctrl app-db-atom value error]
   (try
     (let [ret-val (if (nil? error) (action value @app-db-atom) (action error value @app-db-atom))]
       (if (:pipeline? (meta ret-val))
@@ -149,7 +96,7 @@
 (defn extract-nil [value]
   (if (= ::nil value) nil value))
 
-(defn run-pipeline2 [pipeline ctrl app-db-atom value] 
+(defn run-pipeline [pipeline ctrl app-db-atom value] 
   (let [{:keys [begin rescue]} pipeline
         current-promise (atom nil)
         ops {} ;; REMOVE THIS WHEN REMOVING PIPELINE v1
@@ -169,7 +116,7 @@
              (resolve value)
              (reject error))
            (let [next (first actions)
-                 {:keys [value promise?]} (action-ret-val2 next ctrl app-db-atom prev-value error)]
+                 {:keys [value promise?]} (action-ret-val next ctrl app-db-atom prev-value error)]
              (when promise?
                (reset! current-promise value))
              (let [sideffect? (satisfies? ISideffect value)
@@ -188,8 +135,8 @@
                               (if (nil? resolved-value) prev-value resolved-value)
                               error))))))))))
 
-(defn make-pipeline2 [pipeline]
-  (with-meta (partial run-pipeline2 pipeline) {:pipeline? true}))
+(defn make-pipeline [pipeline]
+  (with-meta (partial run-pipeline pipeline) {:pipeline? true}))
 
 (defn exclusive [pipeline]
   (let [current (atom nil)]

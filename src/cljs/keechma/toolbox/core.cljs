@@ -10,7 +10,7 @@
    [clojure.string :as str]
    [keechma.toolbox.forms.controller :as forms-controller]
    [keechma.toolbox.pipeline.controller :as pp-controller]
-   [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline-> pipeline!]]
+   [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline!]]
    [promesa.core :as p]
    [promesa.impl.promise :as pimpl]
    [keechma.toolbox.forms.helpers :as forms-helpers]
@@ -73,9 +73,8 @@
 (def user-form-controller
   (pp-controller/constructor
    (fn [] true)
-   {:start (pipeline->
-            (begin [_ value app-db]
-                   (pp/send-command! [forms-core/id-key :mount-form] [:user :form])))}))
+   {:start (pipeline! [value app-db]
+             (pp/send-command! [forms-core/id-key :mount-form] [:user :form]))}))
 
 (defn user-form-render [ctx form-props]
   (fn []
@@ -143,7 +142,7 @@
   (p/promise (fn [resolve _] (js/setTimeout resolve ms))))
 
 (def search-controller
-  (pp-controller/constructor2
+  (pp-controller/constructor
    (fn [] true)
    {:search (pp/exclusive
              (pipeline! [value app-db]
@@ -151,14 +150,14 @@
                  (pipeline! [value app-db]
                    (delay-pipeline 500)
                    (movie-search value)
-                   (println "SEARCH!!!1" value)))))}))
+                   (println "SEARCH RESULTS:" value)))))}))
 
 (def app-definition
-  {:components    {:main main-component
+  {:components    {:main      main-component
                    :user-form user-form-component
-                   :search search-component}
+                   :search    search-component}
    :controllers   (-> {:user-form user-form-controller
-                       :search search-controller}
+                       :search    search-controller}
                       (forms-controller/register app-forms))
    :subscriptions {:form-state forms-helpers/form-state-sub}
    :html-element  (.getElementById js/document "app")})

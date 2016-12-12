@@ -1,6 +1,6 @@
 (ns keechma.toolbox.forms.controller
   (:require [keechma.toolbox.pipeline.controller :as pp-controller]
-            [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline->]]
+            [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline!]]
             [keechma.toolbox.forms.core :as core]
             [keechma.toolbox.forms.helpers :as helpers]
             [keechma.toolbox.forms.cursor :as cursor]
@@ -157,38 +157,37 @@
     (core/on-submit-error form-record app-db form-props result error)))
 
 (defn actions [forms-config]
-  {:mount-form (pipeline->
-                (begin [_ value app-db]
-                       {:form-props value}
-                       (pp/commit! (premount-form app-db value))
-                       (get-initial-state app-db forms-config value)
-                       (pp/commit! (mount-form app-db forms-config value)))
-                (rescue [_ error value app-db]
-                        (pp/commit! (update-form-state app-db forms-config
-                                                       :mount-failed (:payload error) value))))
-   :submit-form (pipeline->
-                 (begin [_ value app-db]
-                        (submit-form app-db forms-config value)
-                        (pp/commit! (update-form-state app-db forms-config
-                                                       :submitted nil value))
-                        (handle-on-submit-success app-db forms-config value))
-                 (rescue [_ error value app-db]
-                         (pp/commit! (update-form-state app-db forms-config
-                                                       :submit-failed (:payload error) value))
-                         (handle-on-submit-error app-db forms-config error value)))
-   :on-change (pipeline->
-               (begin [_ value app-db]
-                      (apply pp/commit! (handle-on-change app-db forms-config value))))
-   :on-blur (pipeline->
-             (begin [_ value app-db]
-                    (pp/commit! (handle-on-blur app-db forms-config value))))
-   :on-validate (pipeline->
-                 (begin [_ value app-db]
-                        (pp/commit! (handle-on-validate app-db forms-config value))))
-   :on-submit (pipeline->
-               (begin [_ value app-db]
-                      {:form-props value}
-                      (handle-on-submit app-db forms-config value)))})
+  {:mount-form  (pipeline! [value app-db]
+                  {:form-props value}
+                  (pp/commit! (premount-form app-db value))
+                  (get-initial-state app-db forms-config value)
+                  (pp/commit! (mount-form app-db forms-config value))
+                  (rescue! [error]
+                    (pp/commit! (update-form-state app-db forms-config
+                                                   :mount-failed (:payload error) value))))
+
+   :submit-form (pipeline! [value app-db]
+                  (submit-form app-db forms-config value)
+                  (pp/commit! (update-form-state app-db forms-config
+                                                 :submitted nil value))
+                  (handle-on-submit-success app-db forms-config value)
+                  (rescue! [error]
+                    (pp/commit! (update-form-state app-db forms-config
+                                                   :submit-failed (:payload error) value))
+                    (handle-on-submit-error app-db forms-config error value)))
+
+   :on-change   (pipeline! [value app-db]
+                  (apply pp/commit! (handle-on-change app-db forms-config value)))
+
+   :on-blur     (pipeline! [value app-db]
+                  (pp/commit! (handle-on-blur app-db forms-config value)))
+
+   :on-validate (pipeline! [value app-db]
+                  (pp/commit! (handle-on-validate app-db forms-config value)))
+
+   :on-submit   (pipeline! [value app-db]
+                  {:form-props value}
+                  (handle-on-submit app-db forms-config value))})
 
 
 (defn make-controller [forms-config]
