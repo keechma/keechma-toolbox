@@ -17,14 +17,10 @@
    [keechma.toolbox.forms.core :as forms-core]
    [forms.validator :as v]
    [clojure.string :as str]
-   [ajax.core :refer [GET abort]]))
+   [keechma.toolbox.ajax :refer [GET]]))
 
 (defn movie-search [title]
-  (p/promise (fn [resolve reject on-cancel]
-               (let [req (GET (str "https://www.omdbapi.com/?s=" title)
-                              {:handler resolve
-                               :error-handler reject})]
-                 (on-cancel #(abort req))))))
+  (GET (str "https://www.omdbapi.com/?s=" title)))
 
 (def format-tax-id
   ^{:format-chars #{"-"}}
