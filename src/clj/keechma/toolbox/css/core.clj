@@ -16,7 +16,7 @@
           el-class-keyword (keyword el-class)
           classes (:class config)
           styles (or (:style config) {})
-          el-name (symbol (str "-" name))]
+          el-name (symbol name)]
       `(do
          (keechma.toolbox.css.core/register-component-styles ~el-class-keyword ~styles)
          (def ~el-name (str (name (or '~tag "div")) "." ~el-class "." (str/join "." (map name ~classes))))))))
