@@ -81,7 +81,7 @@
 
 (defn action-ret-val [action ctrl app-db-atom value error]
   (try
-    (let [ret-val (if (nil? error) (action value @app-db-atom) (action error value @app-db-atom))]
+    (let [ret-val (if (nil? error) (action value @app-db-atom) (action value @app-db-atom error))]
       (if (:pipeline? (meta ret-val))
         {:value (ret-val ctrl app-db-atom value)
          :promise? true}
@@ -112,9 +112,7 @@
                  prev-value value
                  error nil]
          (if (not (seq actions))
-           (if (= :begin block)
-             (resolve value)
-             (reject error))
+           (resolve value)
            (let [next (first actions)
                  {:keys [value promise?]} (action-ret-val next ctrl app-db-atom prev-value error)]
              (when promise?
@@ -127,13 +125,22 @@
                (when sideffect?
                  (call! resolved-value ctrl ops app-db-atom))
                (cond
-                 (and error? (= block :begin)) (recur :rescue rescue prev-value resolved-value)
-                 (and error? (= block :rescue)) (reject error)
-                 sideffect? (recur block (rest actions) value error)
-                 :else (recur block
-                              (rest actions)
-                              (if (nil? resolved-value) prev-value resolved-value)
-                              error))))))))))
+                 (and error? (= block :begin))
+                 (if (seq rescue)
+                   (recur :rescue rescue prev-value resolved-value)
+                   (reject resolved-value))
+
+                 (and error? (= block :rescue))
+                 (reject error)
+
+                 sideffect?
+                 (recur block (rest actions) prev-value error)
+
+                 :else
+                 (recur block
+                        (rest actions)
+                        (if (nil? resolved-value) prev-value resolved-value)
+                        error))))))))))
 
 (defn make-pipeline [pipeline]
   (with-meta (partial run-pipeline pipeline) {:pipeline? true}))

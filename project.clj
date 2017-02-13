@@ -1,5 +1,5 @@
 (defproject keechma.toolbox "0.1.0-SNAPSHOT"
-  :dependencies [[org.clojure/clojure "1.8.0"]
+  :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
                  [org.clojure/clojurescript "1.9.229"]
                  [reagent "0.6.0"]
                  [binaryage/devtools "0.8.2"]
@@ -8,9 +8,8 @@
                  [garden "1.3.2"]
                  [funcool/promesa "1.6.0"]
                  [keechma/forms "0.1.2"]
-
-                 [cljs-ajax "0.5.8"]
-                 ]
+                 [medley "0.8.4"]
+                 [cljs-ajax "0.5.8"]]
 
   :min-lein-version "2.5.3"
 

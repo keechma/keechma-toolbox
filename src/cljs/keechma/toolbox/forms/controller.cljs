@@ -62,6 +62,12 @@
                      :data processed-data
                      :state {:type :mounted}))))
 
+(defn unmount-form [app-db {:keys [form-props]}]
+  (let [forms (get-forms app-db)
+        forms-order (vec (filter #(not= form-props %1) (:order forms)))
+        form-states (dissoc (:states forms) form-props)]
+    (assoc-in app-db [:kv core/id-key] forms)))
+
 (defn update-form-state [app-db forms-config type cause {:keys [form-props]}]
   (let [form-state (get-form-state app-db form-props)]
     (assoc-in app-db [:kv core/id-key :states form-props :state]
@@ -165,6 +171,10 @@
                   (rescue! [error]
                     (pp/commit! (update-form-state app-db forms-config
                                                    :mount-failed (:payload error) value))))
+
+   :unmount-form (pipeline! [value app-db]
+                   {:form-props value}
+                   (pp/commit! (unmount-form app-db value)))
 
    :submit-form (pipeline! [value app-db]
                   (submit-form app-db forms-config value)

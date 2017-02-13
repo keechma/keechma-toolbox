@@ -3,13 +3,6 @@
             [clojure.pprint :refer [pprint]]
             [clojure.walk :refer [prewalk]]))
 
-(def error-messages
-  {:maximum       "pipeline-> macro expect maximum of two blocks: begin and rescue"
-   :non-allowed   "pipeline-> macro allows only begin and rescue blocks as top forms"
-   :begin-missing "pipeline-> macro must have a begin block"
-   :begin-args    "pipeline-> begin block must accept three arguments: pipeline-context, value and app-db"
-   :rescue-args   "pipeline-> rescue block must accept four arguments: pipeline-context, error, value and app-db"})
-
 (defn extract-pipeline-parts [args body]
   (let [has-rescue-block? (= "rescue!" (name (first (last body))))
         [begin-body rescue] (if has-rescue-block? [(drop-last body) (last body)] [body nil])
