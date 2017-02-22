@@ -103,8 +103,12 @@
         new-state (if processor
                     (processor app-db form-props form-state path formatted-value)
                     (helpers/attr-assoc-in form-state path formatted-value))
-        attr-valid? (helpers/attr-valid? form-state path)]
-    
+        attr-valid? (helpers/attr-valid? form-state path)
+        current-form-state (get-in app-db [:kv core/id-key :states form-props])]
+
+    (when (nil? current-form-state)
+      (throw (ex-info "Form is not mounted" form-props)))
+ 
     [(assoc-in app-db [:kv core/id-key :states form-props]
                 (if (should-immediately-validate? attr-valid? element)
                   (mark-dirty-and-validate form-record new-state)
