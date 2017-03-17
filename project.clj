@@ -1,4 +1,4 @@
-(defproject keechma.toolbox "0.1.0-SNAPSHOT"
+(defproject keechma.toolbox "0.0.1-SNAPSHOT"
   :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
                  [org.clojure/clojurescript "1.9.229"]
                  [reagent "0.6.0"]
@@ -28,8 +28,8 @@
    {:dependencies []
 
     :plugins      [[lein-figwheel "0.5.8"]
-                   [lein-doo "0.1.7"]]
-    }}
+                   [lein-doo "0.1.7"]]}}
+
 
   :cljsbuild
   {:builds
@@ -75,5 +75,4 @@
      :compiler     {:output-to     "resources/public/js/compiled/test.js"
                     :output-dir    "resources/public/js/compiled/test"
                     :main          keechma.toolbox.runner
-                    :optimizations :none}}
-    ]})
+                    :optimizations :none}}]})
