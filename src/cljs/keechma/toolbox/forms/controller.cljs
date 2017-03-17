@@ -75,6 +75,10 @@
                 {:type type :cause cause}
                 {:type type}))))
 
+(defn update-form-data [app-db forms-config {:keys [form-props data]}]
+  (let [form-state (get-form-state app-db form-props)]
+    (assoc-in app-db [:kv core/id-key :states form-props :data] data)))
+
 (defn mark-dirty-and-validate
   ([form-record form-state] (mark-dirty-and-validate form-record form-state true))
   ([form-record form-state dirty-only?]
@@ -156,6 +160,26 @@
     (->> (p/promise (core/submit-data form-record app-db form-props processed-data))
          (p/map #(assoc data :result %1)))))
 
+(defn update-form [app-db forms-config data]
+  (let [form-props (:form-props data)
+        form-state (get-form-state app-db form-props)
+        form-record (get-form-record forms-config form-props)
+        processed-data (core/process-out form-record app-db form-props (:data form-state))]
+    (->> (p/promise (core/update-data form-record app-db form-props processed-data))
+         (p/map #(assoc data :result %1)))))
+
+(defn handle-on-update-success [app-db forms-config value]
+  (let [{:keys [form-props result]} value
+        form-state (get-form-state app-db form-props)
+        form-record (get-form-record forms-config form-props)]
+    (assoc value :data (core/on-update-success form-record app-db form-props (:data form-state) result))))
+
+(defn handle-on-update-error [app-db forms-config error value]
+  (let [{:keys [form-props result]} value
+        form-state (get-form-state app-db form-props)
+        form-record (get-form-record forms-config form-props)]
+    (assoc value :data (core/on-update-error form-record app-db form-props result error))))
+
 (defn handle-on-submit-success [app-db forms-config {:keys [form-props result]}]
   (let [form-state (get-form-state app-db form-props)
         form-record (get-form-record forms-config form-props)]
@@ -181,6 +205,7 @@
                    (pp/commit! (unmount-form app-db value)))
 
    :submit-form (pipeline! [value app-db]
+                  (pp/commit! (update-form-state app-db forms-config :submitting nil value))
                   (submit-form app-db forms-config value)
                   (pp/commit! (update-form-state app-db forms-config
                                                  :submitted nil value))
@@ -189,6 +214,20 @@
                     (pp/commit! (update-form-state app-db forms-config
                                                    :submit-failed (:payload error) value))
                     (handle-on-submit-error app-db forms-config error value)))
+
+   :update-form   (pipeline! [value app-db]
+                    {:form-props value}
+                    (pp/commit! (update-form-state app-db forms-config :updating nil value))
+                    (update-form app-db forms-config value)
+                    (pp/commit!
+                       (-> app-db
+                           (update-form-data forms-config (handle-on-update-success app-db forms-config value))
+                           (update-form-state forms-config :updated nil value)))
+                    (rescue! [error]
+                      (pp/commit!
+                       (-> app-db
+                           (update-form-data forms-config (handle-on-update-error app-db forms-config error value))
+                           (update-form-state forms-config :update-failed (:payload error) value)))))
 
    :on-change   (pipeline! [value app-db]
                   (apply pp/commit! (handle-on-change app-db forms-config value)))

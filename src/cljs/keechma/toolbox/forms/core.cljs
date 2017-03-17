@@ -8,6 +8,8 @@
     "This function should return either the initial form data or a promise that will resolve to the inital form data.")
   (submit-data [this app-db form-props data]
     "This function should return either the saved form data or a promise that will resolve to the saved form data")
+  (update-data [this app-db form-props data]
+    "This function should return either the updated form data or a promise that will resolve to the updated form data")
   (process-in [this app-db form-props data]
     "This function should return the processed incoming data (returned from the `get-data`) function. Use it to prepare the incoming data for the form.")
   (process-out [this app-db form-props data]
@@ -39,18 +41,27 @@
     "This function will be called if the `submit-data` function throws or rejects the returned promise. It should return a pipeline sideffect.")
   (on-submit-success [this app-db form-props data]
     "This function will be called if the `submit-data` function returns a value or resolves a returned promise. It should return a pipeline sideffect.")
+
+  (on-update-error [this app-db form-props data error]
+    "This function will be called if the `update-data` function throws or rejects the returned promise. It should return a new form data state.")
+  (on-update-success [this app-db form-props data new-data]
+    "This function will be called if the `update-data` function returns a value or resolves a returned promise. It should return a new form data state.")
   (validate [this data]))
 
 (extend-type default
   IForm
   (get-data [_ _ _] {})
   (submit-data [_ _ _ data] data)
+  (update-data [_ _ _ data] data)
   (process-in [_ _ _ data] data)
   (process-out [_ _ _ data] data)
   (process-attr-with [_ _])
   (format-attr-with [_ _])
   (on-submit-error [_ _ _ _ _])
   (on-submit-success [_ _ _ _])
+  (on-update-error [_ _ _ data _] data)
+  (on-update-success [_ _ _ data new-data] new-data)
+
   (validate [this data]
     (let [validator (:validator this)]
       (if validator
