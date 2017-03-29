@@ -1,4 +1,4 @@
-(defproject keechma/toolbox "0.0.1-SNAPSHOT"
+(defproject keechma/toolbox "0.0.1-SNAPSHOT-1"
   :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
                  [org.clojure/clojurescript "1.9.229"]
                  [reagent "0.6.0"]
@@ -42,24 +42,6 @@
                     :output-dir           "resources/public/js/compiled/dev"
                     :asset-path           "js/compiled/dev"
                     :source-map-timestamp true}}
-
-    {:id           "devcards"
-     :source-paths ["src/devcards" "src/cljs"]
-     :figwheel     {:devcards true}
-     :compiler     {:main                 "keechma.toolbox.core-card"
-                    :optimizations        :none
-                    :output-to            "resources/public/js/compiled/devcards.js"
-                    :output-dir           "resources/public/js/compiled/devcards"
-                    :asset-path           "js/compiled/devcards"
-                    :source-map-timestamp true}}
-
-    {:id           "hostedcards"
-     :source-paths ["src/devcards" "src/cljs"]
-     :compiler     {:main          "keechma.toolbox.core-card"
-                    :optimizations :advanced
-                    :devcards      true
-                    :output-to     "resources/public/js/compiled/devcards.js"
-                    :output-dir    "resources/public/js/compiled/hostedcards"}}
 
     {:id           "min"
      :source-paths ["src/cljs"]

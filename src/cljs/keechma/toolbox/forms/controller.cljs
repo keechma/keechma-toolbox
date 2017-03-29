@@ -223,6 +223,7 @@
                        (-> app-db
                            (update-form-data forms-config (handle-on-update-success app-db forms-config value))
                            (update-form-state forms-config :updated nil value)))
+                    (pp/send-command! [core/id-key :updated-form] (:form-props value))
                     (rescue! [error]
                       (pp/commit!
                        (-> app-db

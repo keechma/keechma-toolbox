@@ -96,11 +96,11 @@
 (defn extract-nil [value]
   (if (= ::nil value) nil value))
 
-(defn run-pipeline [pipeline ctrl app-db-atom value] 
+(defn run-pipeline [pipeline ctrl app-db-atom value]
   (let [{:keys [begin rescue]} pipeline
         current-promise (atom nil)
-        ops {} ;; REMOVE THIS WHEN REMOVING PIPELINE v1
-        ]
+        ops {}] ;; REMOVE THIS WHEN REMOVING PIPELINE v1
+
     (p/promise
      (fn [resolve reject on-cancel]
        (on-cancel (fn []
