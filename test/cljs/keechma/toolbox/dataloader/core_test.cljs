@@ -10,7 +10,7 @@
      (map (fn [loader-params]
             (p/promise (fn [resolve reject]
                          (let [value (or data (:params loader-params))]
-                           (js/setTimeout #(resolve value) 100)))))
+                           (js/setTimeout #(resolve value) 1)))))
           params))))
 
 (def simple-datasources
@@ -52,9 +52,8 @@
 (deftest make-dataloader
   (async done
          (let [dataloader (core/make-dataloader simple-datasources)
-               app-db-atom (atom {})
-               route {}]
-           (->> (dataloader app-db-atom route)
+               app-db-atom (atom {})]
+           (->> (dataloader app-db-atom)
                 (p/error (fn []
                            (is (= false true "Promise rejected"))
                            (done)))
@@ -88,7 +87,7 @@
     :loader (fn [params]
               (map (fn [_]
                      (p/promise (fn [_ reject]
-                                  (js/setTimeout #(reject "404") 10)))) params))}
+                                  (js/setTimeout #(reject "404") 1)))) params))}
 
    :current-user-favorites
    {:target [:kv :favorites :current]
@@ -104,13 +103,89 @@
          (let [dataloader (core/make-dataloader datasources-with-errors)
                app-db-atom (atom {})
                route {}]
-           (->> (dataloader app-db-atom route)
+           (->> (dataloader app-db-atom)
                 (p/map (fn []
                            (is (= @app-db-atom
                                   {:kv
                                    {:keechma.toolbox.dataloader.core/dataloader
-                                    {:current-user {:status :error :error "404" :prev nil}
-                                     :current-user-favorites {:status :error :error "404" :prev nil}
-                                     :jwt {:status :completed :prev {:value nil :params nil :status nil}}}
-                                    :jwt "JWT!"}}))
+                                    {:current-user {:status :error
+                                                    :error "404"
+                                                    :prev nil
+                                                    :params nil}
+                                     :current-user-favorites {:status :error
+                                                              :error "404"
+                                                              :prev nil
+                                                              :params nil}
+                                     :jwt {:status
+                                           :completed
+                                           :params nil
+                                           :error nil
+                                           :prev {:value nil
+                                                  :params nil
+                                                  :status nil
+                                                  :error nil}}}
+                                    :jwt "JWT!"
+                                    :user {:current nil}
+                                    :favorites {:current nil}}}))
                            (done)))))))
+
+(deftest route-dependent-dataloader
+  (let [call-counter (atom 0)
+        loader (fn [params]
+                 (swap! call-counter inc)
+                 (map (fn [p] (:params p)) params))
+        datasources {:jwt {:target [:kv :jwt]
+                           :loader loader
+                           :params (fn [_ _ _]
+                                     "123")}
+                     :foo {:target [:kv :foo]
+                           :loader loader
+                           :params (fn [_ route _]
+                                     (:foo route))}}
+        app-db-atom (atom {:route {:data {:foo :bar}}})
+        dataloader (core/make-dataloader datasources)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (is (= @app-db-atom
+                                {:route {:data {:foo :bar}}
+                                 :kv {:foo :bar
+                                      :jwt "123"
+                                      :keechma.toolbox.dataloader.core/dataloader
+                                      {:jwt {:status :completed
+                                             :params "123"
+                                             :error nil
+                                             :prev {:value nil
+                                                    :params nil
+                                                    :status nil
+                                                    :error nil}}
+                                       :foo {:status :completed
+                                             :params :bar
+                                             :error nil
+                                             :prev {:value nil
+                                                    :params nil
+                                                    :status nil
+                                                    :error nil}}}}}))
+                         (swap! app-db-atom assoc-in [:route :data :foo] :baz)
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (is (= @app-db-atom
+                                {:route {:data {:foo :baz}}
+                                 :kv {:foo :baz
+                                      :jwt "123"
+                                      :keechma.toolbox.dataloader.core/dataloader
+                                      {:jwt {:status :completed
+                                             :params "123"
+                                             :error nil
+                                             :prev {:value "123"
+                                                    :params "123"
+                                                    :status :completed
+                                                    :error nil}}
+                                       :foo {:status :completed
+                                             :params :baz
+                                             :error nil
+                                             :prev {:value :bar
+                                                    :params :bar
+                                                    :status :completed
+                                                    :error nil}}}}}))
+                         (done)))))))

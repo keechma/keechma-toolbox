@@ -56,21 +56,6 @@
                           (let [pending-datasource (get pending-datasources idx)]                            
                             (put! results-chan [:error (assoc pending-datasource :error error)]))))))))))
 
-(defn mark-pending! [app-db-atom datasources]
-  (let [app-db @app-db-atom]
-    (reset! app-db-atom
-            (reduce
-             (fn [acc [key val]]
-               (let [prev-value (get-in acc (:target val))
-                     prev-params (get-in acc [:kv id-key key :params])
-                     prev-status (get-in acc [:kv id-key key :status])]
-                 (assoc-in acc [:kv id-key key]
-                           {:status :pending
-                            :prev {:value prev-value
-                                   :params prev-params
-                                   :status prev-status}})))
-             app-db datasources))))
-
 (defn has-pending-datasources? [app-db]
   (let [statuses (map (fn [[_ val]] (get val :status)) (get-in app-db [:kv id-key]))]
     (boolean (some #(= :pending %) statuses))))
@@ -82,7 +67,9 @@
             (-> app-db
                 (assoc-in [:kv id-key datasource]
                           {:status :completed
-                           :prev (get-in app-db [:kv id-key datasource :prev])})
+                           :params (:params payload)
+                           :error nil
+                           :prev (merge {:value nil :status nil :error nil :params nil} (:prev payload))})
                 (assoc-in (:target payload) (:value payload))))))
 
 (defn start-dependent-loaders! [app-db-atom app-datasources datasources results-chan]
@@ -97,23 +84,40 @@
                            {} datasources)]
     (start-loaders! app-db-atom app-datasources fulfilled results-chan)))
 
-(defn store-datasource-error! [app-db-atom payload]
-  (let [app-db @app-db-atom
-        datasource (:datasource payload)]
-    (reset! app-db-atom
-            (-> app-db
-                (assoc-in [:kv id-key datasource]
+(defn store-datasource-error! [app-db payload]
+  (let [datasource (:datasource payload)]
+    (-> app-db
+        (assoc-in [:kv id-key datasource]
+                  {:status :error
+                   :prev nil
+                   :params (:params payload)
+                   :error (:error payload)})
+        (assoc-in (:target payload) nil))))
+
+(defn mark-dependent-errors! [app-db app-datasources datasources payload]
+  (reduce (fn [acc [key val]]
+            (-> acc
+                (assoc-in [:kv id-key key]
                           {:status :error
                            :prev nil
-                           :error (:error payload)})))))
+                           :params nil
+                           :error (:error payload)})
+                (assoc-in (:target val) nil)))
+          app-db datasources))
 
-(defn mark-dependent-errors! [app-db-atom app-datasources datasources payload]
-  (reset! app-db-atom
-          (reduce (fn [acc [key val]]
-                    (assoc-in acc [:kv id-key key]
-                              {:status :error
-                               :prev nil
-                               :error (:error payload)})) @app-db-atom datasources)))
+(defn mark-pending! [app-db-atom datasources]
+  (let [app-db @app-db-atom]
+    (reset! app-db-atom
+            (reduce
+             (fn [acc [key val]]
+               (let [prev-value (get-in acc (:target val))
+                     prev-datasource (get-in acc [:kv id-key key])]
+                 (assoc-in acc [:kv id-key key]
+                           {:status :pending
+                            :prev (-> prev-datasource
+                                      (dissoc :prev)
+                                      (assoc :value prev-value))})))
+             app-db datasources))))
 
 (defn make-dataloader [datasources]
   (let [g (reduce
@@ -133,15 +137,18 @@
            (go-loop []
                (if @running?
                  (if (has-pending-datasources? @app-db-atom)
-                   (let [[status payload] (<! results-chan)]
-                     (let [t-dependents (dep/transitive-dependents g (:datasource payload))]
-                       (if (= :ok status)
-                         (do
-                           (store-datasource! app-db-atom payload)
-                           (start-dependent-loaders! app-db-atom datasources (select-keys datasources t-dependents) results-chan))
-                         (do
-                           (store-datasource-error! app-db-atom payload)
-                           (mark-dependent-errors! app-db-atom datasources (select-keys datasources t-dependents) payload)))
-                       (recur)))
+                   (let [[status payload] (<! results-chan)
+                         t-dependents (dep/transitive-dependents g (:datasource payload))]
+                     (case status
+                       :ok (do
+                             (store-datasource! app-db-atom payload)
+                             (start-dependent-loaders! app-db-atom datasources (select-keys datasources t-dependents) results-chan))
+                       :error (reset! app-db-atom
+                                      (-> @app-db-atom
+                                          (store-datasource-error! payload)
+                                          (mark-dependent-errors!
+                                           datasources (select-keys datasources t-dependents) payload)))
+                       nil)
+                     (recur))
                    (resolve))
                  (reject)))))))))
