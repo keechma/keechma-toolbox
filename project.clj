@@ -1,15 +1,15 @@
 (defproject keechma/toolbox "0.0.1-SNAPSHOT-1"
-  :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
+  :dependencies [[org.clojure/clojure "1.9.0-alpha15"]
                  [org.clojure/clojurescript "1.9.229"]
                  [reagent "0.6.0"]
                  [binaryage/devtools "0.8.2"]
-                 [keechma "0.2.0-SNAPSHOT-4" :exclusions [cljsjs/react-with-addons]]
-                 [devcards "0.2.2" :exclusions [cljsjs/react]]
+                 [keechma "0.2.0-SNAPSHOT-11" :exclusions [cljsjs/react-with-addons]]
                  [garden "1.3.2"]
                  [funcool/promesa "1.6.0"]
                  [keechma/forms "0.1.2"]
                  [medley "0.8.4"]
-                 [cljs-ajax "0.5.8"]]
+                 [cljs-ajax "0.5.8"]
+                 [com.stuartsierra/dependency "0.2.0"]]
 
   :min-lein-version "2.5.3"
 

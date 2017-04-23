@@ -3,13 +3,13 @@
   <groupId>keechma</groupId>
   <artifactId>toolbox</artifactId>
   <packaging>jar</packaging>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.1-SNAPSHOT-1</version>
   <name>toolbox</name>
   <description/>
   <scm>
     <connection>scm:git:git://github.com/retro/keechma-toolbox.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/retro/keechma-toolbox.git</developerConnection>
-    <tag>098773263f1694f6241d8b90cc998d0466aa78b0
+    <tag>23cfbfcda7617541c03f1e53adff2b6582892d4b
 </tag>
     <url>https://github.com/retro/keechma-toolbox</url>
   </scm>
