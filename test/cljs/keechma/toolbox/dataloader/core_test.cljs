@@ -177,9 +177,9 @@
                                       {:jwt {:status :completed
                                              :params "123"
                                              :error nil
-                                             :prev {:value "123"
-                                                    :params "123"
-                                                    :status :completed
+                                             :prev {:value nil
+                                                    :params nil
+                                                    :status nil
                                                     :error nil}}
                                        :foo {:status :completed
                                              :params :baz

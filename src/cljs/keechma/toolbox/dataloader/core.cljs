@@ -22,23 +22,14 @@
               params (params-fn prev route-params deps-values)
               loader (or (:loader val) identity)
               target (:target val)]
-          (if (and (= params (:params prev))
-                   (= :completed (:status prev)))
-            (do
-              (put! results-chan [:ok {:datasource key
-                                       :target target
-                                       :params params
-                                       :prev prev
-                                       :value (:value prev)}])
-              (recur (rest ds) loaders))
-            (let [current-loaders (or (get loaders loader) [])]
-              (recur (rest ds)
-                     (assoc loaders loader
-                            (conj current-loaders
-                                  {:params params
-                                   :prev prev
-                                   :datasource key
-                                   :target target}))))))))))
+          (let [current-loaders (or (get loaders loader) [])]
+            (recur (rest ds)
+                   (assoc loaders loader
+                          (conj current-loaders
+                                {:params params
+                                 :prev prev
+                                 :datasource key
+                                 :target target})))))))))
 
 (defn start-loaders! [app-db-atom app-datasources datasources results-chan]
   (let [app-db @app-db-atom
@@ -119,21 +110,63 @@
                                       (assoc :value prev-value))})))
              app-db datasources))))
 
+
+
+(defn datasource-params [datasource-key datasource app-db]
+  (let [params-fn (or (:params datasource) (fn [& args]))
+        prev (get-in app-db [:kv id-key datasource-key])
+        route (get-in app-db [:route :data])
+        deps (reduce (fn [acc dep]
+                       (assoc acc dep
+                              (get-in app-db [:kv id-key dep]))) {} (:deps datasource))]
+    (params-fn prev route deps)))
+
+(defn deps-fulfilled? [app-db datasources-plan datasource]
+  (reduce (fn [fulfilled? dep-key]
+            (let [dep (get datasources-plan dep-key)]
+              (and fulfilled?
+                   (:deps-fulfilled? dep)
+                   (not (:reload? dep)))))
+          true (:deps datasource)))
+
+(defn datasources-load-plan [app-db datasources datasources-order]
+  (loop [datasources-plan {}
+         datasources-order datasources-order]
+    (if (seq datasources-order)
+      (let [datasource-key (first datasources-order)
+            datasource (get datasources datasource-key)
+            datasource-state (get-in app-db [:kv id-key datasource-key])
+            datasource-deps-fulfilled? (deps-fulfilled? app-db datasources-plan datasource)
+            reload? (if (not datasource-deps-fulfilled?)
+                      true
+                      (not (and (= (:params datasource-state)
+                                   (datasource-params datasource-key datasource app-db))
+                                (= :completed (:status datasource-state)))))]
+        (recur (assoc datasources-plan datasource-key
+                      {:deps-fulfilled? datasource-deps-fulfilled?
+                       :reload? reload?})
+               (rest datasources-order)))
+      datasources-plan)))
+
 (defn make-dataloader [datasources]
   (let [g (reduce
            (fn [acc [key val]]
              (let [deps (:deps val)]
                (reduce #(dep/depend %1 key %2) acc deps)))
            (dep/graph) datasources)
-        independent (filter #(not (seq (get-in datasources [% :deps]))) (keys datasources))]
+        g-nodes (dep/nodes g)
+        independent (filter #(not (contains? g-nodes %)) (keys datasources))]
     (fn [app-db-atom]
       (p/promise
        (fn [resolve reject on-cancel]
          (let [running? (atom true) 
-               results-chan (chan)]
+               results-chan (chan)
+               plan (datasources-load-plan @app-db-atom datasources (concat independent (dep/topo-sort g)))
+               start-nodes (filter #(and (:reload? (get plan %)) (:deps-fulfilled? (get plan %))) (keys plan))]
+
            (on-cancel #(swap! running? not))
-           (mark-pending! app-db-atom datasources)
-           (start-loaders! app-db-atom datasources (select-keys datasources independent) results-chan)
+           (mark-pending! app-db-atom (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
+           (start-loaders! app-db-atom datasources (select-keys datasources start-nodes) results-chan)
            (go-loop []
                (if @running?
                  (if (has-pending-datasources? @app-db-atom)
