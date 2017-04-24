@@ -1,7 +1,8 @@
 (ns keechma.toolbox.dataloader.core-test
   (:require [cljs.test :refer-macros [deftest testing is async]]
             [keechma.toolbox.dataloader.core :as core]
-            [promesa.core :as p]))
+            [promesa.core :as p]
+            [entitydb.core :as edb]))
 
 (defn promised-datasource
   ([] (promised-datasource nil))
@@ -16,9 +17,11 @@
 (def simple-datasources
   {:jwt                   
    {:target [:kv :jwt]
-    :loader (promised-datasource "JWT")
+    :loader (promised-datasource)
     :processor (fn [value datasource]
-                 (str value "!"))}
+                 (str value "!"))
+    :params (fn [prev route _]
+              (or (:jwt route) "JWT"))}
 
    :no-deps
    {:target [:kv :no-deps]
@@ -69,6 +72,23 @@
                                (get-in app-db [:kv :user :current]))
                            (is (= {:jwt "JWT!"
                                    :current-user {:jwt "JWT!"
+                                                  :current-user-id 1}
+                                   :favorites [{:id 3} {:id 4}]}
+                                  (get-in app-db [:kv :favorites :current])))
+                           (swap! app-db-atom assoc-in [:route :data :jwt] "JWT2")
+                           (dataloader app-db-atom))))
+                (p/map (fn []
+                         (let [app-db @app-db-atom]
+                           (is (= "JWT2!" (get-in app-db [:kv :jwt])))
+                           (is (= true (get-in app-db [:kv :no-deps])))
+                           (is (= {:jwt "JWT2!"
+                                   :users [{:id 1} {:id 2}]}
+                                  (get-in app-db [:kv :user :list])))
+                           (is (= {:jwt "JWT2!"
+                                   :current-user-id 1})
+                               (get-in app-db [:kv :user :current]))
+                           (is (= {:jwt "JWT2!"
+                                   :current-user {:jwt "JWT2!"
                                                   :current-user-id 1}
                                    :favorites [{:id 3} {:id 4}]}
                                   (get-in app-db [:kv :favorites :current])))
@@ -188,4 +208,71 @@
                                                     :params :bar
                                                     :status :completed
                                                     :error nil}}}}}))
+                         (dataloader app-db-atom)))
+                (p/map (fn []   
+                         (= @call-counter 3)
                          (done)))))))
+
+(def datasources-with-edb
+  {:jwt {:target [:kv :jwt]
+         :loader (fn [loader-params]
+                   (map (fn [_] "JWT") loader-params))}
+   :current-user {:target [:edb/named-item :user/current]
+                  :deps [:jwt]
+                  :loader (fn [loader-params]
+                            (map (fn [p] 
+                                   (when-let [user-id (get-in p [:params :user-id])]
+                                     {:id user-id
+                                      :jwt (get-in p [:params :jwt])
+                                      :name (str "user " user-id)}))
+                                 loader-params))
+                  :params (fn [prev route {:keys [jwt]}]
+                            {:user-id (:id route)
+                             :jwt jwt})}
+   :users {:target [:edb/collection :user/list]
+           :deps [:jwt]
+           :loader (fn [loader-params]
+                     (map (fn [p]
+                            [{:id 1 :last-name "user 1 last-name" :jwt-list (get-in p [:params :jwt])}
+                             {:id 2 :last-name "user 2 last-name" :jwt-list (get-in p [:params :jwt])}])
+                          loader-params))
+           :params (fn [prev route {:keys [jwt]}]
+                     {:jwt jwt})}})
+
+(deftest dataloader-with-edb
+  (let [app-db-atom (atom {:route {:data {}}})
+        edb-schema {:user {:id :id}}
+        dataloader (core/make-dataloader datasources-with-edb edb-schema)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (let [app-db @app-db-atom
+                               edb (:entity-db app-db)]
+                           (is (= [{:id 1 :last-name "user 1 last-name" :jwt-list "JWT"}
+                                   {:id 2 :last-name "user 2 last-name" :jwt-list "JWT"}]
+                                  (edb/get-collection edb-schema edb :user :list)))
+                           (is (= nil (edb/get-named-item edb-schema edb :user :current)))
+                           (is (= "JWT" (get-in app-db [:kv :jwt])))
+                           (swap! app-db-atom assoc-in [:route :data] {:id 1})
+                           (dataloader app-db-atom))))
+                (p/map (fn []
+                         (let [app-db @app-db-atom
+                               edb (:entity-db app-db)]
+                           (is (= [{:id 1 :last-name "user 1 last-name" :name "user 1" :jwt "JWT" :jwt-list "JWT"}
+                                   {:id 2 :last-name "user 2 last-name" :jwt-list "JWT"}]
+                                  (edb/get-collection edb-schema edb :user :list)))
+                           (is (= {:id 1 :last-name "user 1 last-name" :name "user 1" :jwt "JWT" :jwt-list "JWT"}
+                                  (edb/get-named-item edb-schema edb :user :current)))
+                           (is (= "JWT" (get-in app-db [:kv :jwt])))
+                           (swap! app-db-atom assoc-in [:route :data] {:id 2})
+                           (dataloader app-db-atom))))
+                (p/map (fn []
+                         (let [app-db @app-db-atom
+                               edb (:entity-db app-db)]
+                           (is (= [{:id 1 :last-name "user 1 last-name" :name "user 1" :jwt "JWT" :jwt-list "JWT"}
+                                   {:id 2 :last-name "user 2 last-name" :name "user 2" :jwt "JWT" :jwt-list "JWT"}]
+                                  (edb/get-collection edb-schema edb :user :list)))
+                           (is (= {:id 2 :last-name "user 2 last-name" :name "user 2" :jwt "JWT" :jwt-list "JWT"}
+                                  (edb/get-named-item edb-schema edb :user :current)))
+                           (is (= "JWT" (get-in app-db [:kv :jwt])))
+                           (done))))))))

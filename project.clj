@@ -9,7 +9,8 @@
                  [keechma/forms "0.1.2"]
                  [medley "0.8.4"]
                  [cljs-ajax "0.5.8"]
-                 [com.stuartsierra/dependency "0.2.0"]]
+                 [com.stuartsierra/dependency "0.2.0"]
+                 [keechma/entitydb "0.1.0"]]
 
   :min-lein-version "2.5.3"
 
