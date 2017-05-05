@@ -200,10 +200,12 @@
             datasource (get datasources datasource-key)
             datasource-meta (get-meta app-db datasource-key)
             datasource-deps-fulfilled? (deps-fulfilled? app-db datasources-plan datasource)
+            new-datasource-params (datasource-params datasources datasource-key datasource app-db edb-schema)
             reload? (if (not datasource-deps-fulfilled?)
                       true
-                      (not (and (= (:params datasource-meta)
-                                   (datasource-params datasources datasource-key datasource app-db edb-schema))
+                      (not (and (or (= (:params datasource-meta)
+                                       new-datasource-params)
+                                    (= ::ignore new-datasource-params))
                                 (= :completed (:status datasource-meta)))))]
         (recur (assoc datasources-plan datasource-key
                       {:deps-fulfilled? datasource-deps-fulfilled?
@@ -247,5 +249,5 @@
                                           datasources (select-keys datasources t-dependents) edb-schema payload)))
                       nil)
                     (recur))
-                  (resolve))
+                  (resolve @app-db-atom))
                 (reject))))))))))
