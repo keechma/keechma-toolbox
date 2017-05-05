@@ -7,7 +7,6 @@
 
 (def id-key ::dataloader)
 
-
 (defn target->edb [target]
   [(keyword (namespace target))
    (keyword (name target))])
@@ -34,12 +33,12 @@
 (defn get-edb-named-item [app-db edb-schema target]
   (let [edb (:entity-db app-db)
         [entity named-item] (target->edb target)]
-    (edb/get-named-item edb-schema app-db entity named-item)))
+    (edb/get-named-item edb-schema edb entity named-item)))
 
 (defn get-edb-collection [app-db edb-schema target]
   (let [edb (:entity-db app-db)
         [entity collection] (target->edb target)]
-    (edb/get-collection edb-schema app-db entity collection)))
+    (edb/get-collection edb-schema edb entity collection)))
 
 (defn get-kv-data [app-db target]
   (get-in app-db target))
@@ -71,7 +70,8 @@
       (if (not (seq ds))
         loaders
         (let [[key val] (first ds)
-              prev (:prev (get-meta app-db key))
+              prev {:data (get-data app-db edb-schema (:target val))
+                    :meta (get-meta app-db key)}
               params-fn (or (:params val) (fn [& args]))
               deps (reduce
                     (fn [acc dep-key]
@@ -111,15 +111,19 @@
 
 (defn store-datasource! [app-db-atom edb-schema payload]
   (let [app-db @app-db-atom
-        datasource-key (:datasource payload)]
+        datasource-key (:datasource payload)
+        value (:value payload)
+        value-keys (if (map? value) (set (keys value)) #{})
+        [res-data res-meta] (if (= #{:data :meta} value-keys) [(:data value) (:meta value)] [value {}])]
     (reset! app-db-atom
             (-> app-db
                 (save-meta datasource-key
                            {:status :completed
                             :params (:params payload)
                             :error nil
+                            :meta res-meta
                             :prev (merge {:value nil :status nil :error nil :params nil} (:prev payload))})
-                (save-data edb-schema (:target payload) (:value payload))))))
+                (save-data edb-schema (:target payload) res-data)))))
 
 (defn start-dependent-loaders! [app-db-atom app-datasources datasources results-chan edb-schema]
   (let [app-db @app-db-atom
@@ -170,12 +174,13 @@
                                        (assoc :value prev-value))})))
              app-db datasources))))
 
-(defn datasource-params [datasource-key datasource app-db edb-schema]
+(defn datasource-params [datasources datasource-key datasource app-db edb-schema]
   (let [params-fn (or (:params datasource) (fn [& args]))
-        prev (get-meta datasource-key app-db)
+        prev {:meta (get-meta app-db datasource-key)
+              :data (get-data app-db edb-schema (:target datasource))}
         route (get-in app-db [:route :data])
         deps (reduce (fn [acc dep-key]
-                       (assoc acc dep-key (get-data app-db edb-schema(:target (get datasource dep-key)) )))
+                       (assoc acc dep-key (get-data app-db edb-schema (:target (get datasources dep-key)) )))
                      {} (:deps datasource))]
     (params-fn prev route deps)))
 
@@ -198,7 +203,7 @@
             reload? (if (not datasource-deps-fulfilled?)
                       true
                       (not (and (= (:params datasource-meta)
-                                   (datasource-params datasource-key datasource app-db edb-schema))
+                                   (datasource-params datasources datasource-key datasource app-db edb-schema))
                                 (= :completed (:status datasource-meta)))))]
         (recur (assoc datasources-plan datasource-key
                       {:deps-fulfilled? datasource-deps-fulfilled?
