@@ -112,7 +112,7 @@
                  prev-value value
                  error nil]
          (if (not (seq actions))
-           (resolve value)
+           (resolve prev-value)
            (let [next (first actions)
                  {:keys [value promise?]} (action-ret-val next ctrl app-db-atom prev-value error)]
              (when promise?
