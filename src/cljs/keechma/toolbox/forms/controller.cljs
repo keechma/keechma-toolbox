@@ -28,11 +28,25 @@
                      :states (assoc forms-states form-props form-state)
                      :order (conj forms-order form-props)))))
 
+(defn promise-or-pipeline
+  ([res] (promise-or-pipeline res identity))
+  ([res processor]
+   (let [res-meta (meta res)]
+     (if (:pipeline? res-meta)
+       (with-meta
+         (fn [& args]
+           (->> (apply res args)
+                (p/map processor)))
+         res-meta)
+       (->> (p/promise res)
+            (p/map processor))))))
+
 (defn get-initial-state [app-db forms-config value]
   (let [form-props (:form-props value)
         form-record (get-form-record forms-config form-props)]
-    (->> (p/promise (core/get-data form-record app-db form-props))
-         (p/map #(assoc value :initial-data %1)))))
+    (promise-or-pipeline
+     (core/get-data form-record app-db form-props)
+     #(assoc value :initial-data %1))))
 
 (defn should-immediately-validate? [attr-valid? element]
   (cond
@@ -157,16 +171,18 @@
         form-state (get-form-state app-db form-props)
         form-record (get-form-record forms-config form-props)
         processed-data (core/process-out form-record app-db form-props (:data form-state))]
-    (->> (p/promise (core/submit-data form-record app-db form-props processed-data))
-         (p/map #(assoc data :result %1)))))
+    (promise-or-pipeline
+     (core/submit-data form-record app-db form-props processed-data)
+     #(assoc data :result %1))))
 
 (defn update-form [app-db forms-config data]
   (let [form-props (:form-props data)
         form-state (get-form-state app-db form-props)
         form-record (get-form-record forms-config form-props)
         processed-data (core/process-out form-record app-db form-props (:data form-state))]
-    (->> (p/promise (core/update-data form-record app-db form-props processed-data))
-         (p/map #(assoc data :result %1)))))
+    (promise-or-pipeline
+     (core/submit-data form-record app-db form-props processed-data)
+     #(assoc data :result %1))))
 
 (defn handle-on-update-success [app-db forms-config value]
   (let [{:keys [form-props result]} value
@@ -201,8 +217,7 @@
                                                    :mount-failed (:payload error) value))))
 
    :unmount-form (pipeline! [value app-db]
-                   {:form-props value}
-                   (pp/commit! (unmount-form app-db value)))
+                   (pp/commit! (unmount-form app-db {:form-props value})))
 
    :submit-form (pipeline! [value app-db]
                   (pp/commit! (update-form-state app-db forms-config :submitting nil value))
