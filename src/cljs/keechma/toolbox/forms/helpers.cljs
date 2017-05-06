@@ -70,7 +70,8 @@
                (let [dirty-only? (or (first args) false)]
                  (ui/send-command ctx :on-validate [form-props dirty-only?])))
    :set-value (fn [path value]
-                (ui/send-command ctx :on-change [form-props path nil value nil]))
+                (let [path (keechma-forms-util/key-to-path path)]
+                  (ui/send-command ctx :on-change [form-props path nil value nil])))
    :submit (fn [e]
              (when e (.preventDefault e))
              (ui/send-command ctx :on-submit form-props))})
