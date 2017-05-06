@@ -1,15 +1,29 @@
 (ns keechma.toolbox.forms.mount-controller
   (:require [keechma.controller :as controller]
             [keechma.toolbox.forms.core :refer [id-key]]
-            [cljs.core.async :refer (<! put!)])
+            [cljs.core.async :refer (<! put!)]
+            [clojure.set :as set])
   (:require-macros [cljs.core.async.macros :refer [go-loop]]))
 
-(defn mount-forms [controller route]
-  (let [forms-params (:forms-params controller)]
-    (doseq [[form params-fn] forms-params]
-      (let [id (params-fn route)]
-        (when id
-          (controller/send-command controller [id-key :mount-form] [form id]))))))
+(defn forms-for-route [route forms-params]
+  (map (fn [[form params-fn]]
+         (when-let [id (params-fn route)]
+           [form id]))
+       forms-params))
+
+(defn mount-forms [controller route mounted-forms]
+  (let [forms-params (:forms-params controller)
+        should-be-mounted-forms (set (remove nil? (forms-for-route route forms-params)))
+        forms-to-unmount (set/difference mounted-forms should-be-mounted-forms)
+        forms-to-mount (set/difference should-be-mounted-forms mounted-forms)]
+    
+    (doseq [f forms-to-unmount]
+      (controller/send-command controller [id-key :unmount-form] f))
+    (doseq [f forms-to-mount]
+      (controller/send-command controller [id-key :mount-form] f))))
+
+(defn get-mounted-forms [app-db]
+  (set (get-in app-db [:kv id-key :order])))
 
 (defrecord Controller [forms-params]
   controller/IController
@@ -22,8 +36,8 @@
     (go-loop []
       (let [[command args] (<! in-chan)]
         (case command
-          :mount-forms (mount-forms this args)
-          :route-changed (mount-forms this (:data args))
+          :mount-forms (mount-forms this args (get-mounted-forms @app-db-atom))
+          :route-changed (mount-forms this (:data args) (get-mounted-forms @app-db-atom))
           nil)
         (when command
           (recur))))))

@@ -80,7 +80,7 @@
   (let [forms (get-forms app-db)
         forms-order (vec (filter #(not= form-props %1) (:order forms)))
         form-states (dissoc (:states forms) form-props)]
-    (assoc-in app-db [:kv core/id-key] forms)))
+    (assoc-in app-db [:kv core/id-key] (assoc forms :order forms-order :states form-states))))
 
 (defn update-form-state [app-db forms-config type cause {:keys [form-props]}]
   (let [form-state (get-form-state app-db form-props)]
