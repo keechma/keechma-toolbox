@@ -304,3 +304,33 @@
                                   (edb/get-named-item edb-schema edb :user :current)))
                            (is (= "JWT" (get-in app-db [:kv :jwt])))
                            (done))))))))
+
+(def datasources-with-removing-edb-collection
+  {:users {:target [:edb/collection :user/list]
+           :params (fn [prev route _]
+                     route)
+           :loader (fn [reqs]
+                     (map (fn [p]
+                            (if-let [page (get-in p [:params :page])]
+                              [{:id 1}]
+                              [])) reqs))}})
+
+(deftest dataloader-knows-when-to-remove-edb-collection
+
+  (let [app-db-atom (atom {:route {:data {:page "users"}}})
+        edb-schema {:user {:id :id}}
+        dataloader (core/make-dataloader datasources-with-removing-edb-collection edb-schema)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (let [app-db @app-db-atom
+                               edb (:entity-db app-db)]
+                           (is (= [{:id 1}]
+                                  (edb/get-collection edb-schema edb :user :list)))
+                           (swap! app-db-atom assoc-in [:route :data] {})
+                           (dataloader app-db-atom))))
+                (p/map (fn []
+                         (let [app-db @app-db-atom
+                               edb (:entity-db app-db)]
+                           (is (= [] (edb/get-collection edb-schema edb :user :list)))
+                           (done))))))))

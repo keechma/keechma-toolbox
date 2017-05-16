@@ -26,7 +26,7 @@
   (let [edb (:entity-db app-db)
         [entity collection] (target->edb target)]
     (assoc app-db :entity-db
-           (if data
+           (if (seq data)
              (edb/insert-collection edb-schema edb entity collection data)
              (edb/remove-collection edb entity collection)))))
 
