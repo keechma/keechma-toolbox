@@ -1,4 +1,4 @@
-(defproject keechma/toolbox "0.0.1-SNAPSHOT-2"
+(defproject keechma/toolbox "0.0.1-SNAPSHOT-3"
   :dependencies [[org.clojure/clojure "1.9.0-alpha15"]
                  [org.clojure/clojurescript "1.9.229"]
                  [reagent "0.6.0"]
