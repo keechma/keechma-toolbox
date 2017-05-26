@@ -43,8 +43,6 @@
 (defn constructor [datasources edb-schema]
   (->Controller (dataloader/make-dataloader datasources edb-schema)))
 
-
-
 (defn register
   ([datasources edb-schema] (register {} datasources edb-schema))
   ([controllers datasources edb-schema]

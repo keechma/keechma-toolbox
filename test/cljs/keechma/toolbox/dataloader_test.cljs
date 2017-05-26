@@ -1,4 +1,4 @@
-(ns keechma.toolbox.dataloader.core-test
+(ns keechma.toolbox.dataloader-test
   (:require [cljs.test :refer-macros [deftest testing is async]]
             [keechma.toolbox.dataloader.core :as core]
             [promesa.core :as p]

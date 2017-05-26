@@ -3,13 +3,13 @@
   <groupId>keechma</groupId>
   <artifactId>toolbox</artifactId>
   <packaging>jar</packaging>
-  <version>0.0.1-SNAPSHOT-1</version>
+  <version>0.0.1-SNAPSHOT-3</version>
   <name>toolbox</name>
   <description/>
   <scm>
     <connection>scm:git:git://github.com/retro/keechma-toolbox.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/retro/keechma-toolbox.git</developerConnection>
-    <tag>23cfbfcda7617541c03f1e53adff2b6582892d4b
+    <tag>c6dea05537c48d02365ed0c6394163de5d9e2362
 </tag>
     <url>https://github.com/retro/keechma-toolbox</url>
   </scm>
@@ -76,7 +76,7 @@
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
-      <version>1.9.0-alpha14</version>
+      <version>1.9.0-alpha15</version>
     </dependency>
     <dependency>
       <groupId>org.clojure</groupId>
@@ -96,22 +96,11 @@
     <dependency>
       <groupId>keechma</groupId>
       <artifactId>keechma</artifactId>
-      <version>0.2.0-SNAPSHOT-4</version>
+      <version>0.2.0-SNAPSHOT-11</version>
       <exclusions>
         <exclusion>
           <groupId>cljsjs</groupId>
           <artifactId>react-with-addons</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>devcards</groupId>
-      <artifactId>devcards</artifactId>
-      <version>0.2.2</version>
-      <exclusions>
-        <exclusion>
-          <groupId>cljsjs</groupId>
-          <artifactId>react</artifactId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -139,6 +128,16 @@
       <groupId>cljs-ajax</groupId>
       <artifactId>cljs-ajax</artifactId>
       <version>0.5.8</version>
+    </dependency>
+    <dependency>
+      <groupId>com.stuartsierra</groupId>
+      <artifactId>dependency</artifactId>
+      <version>0.2.0</version>
+    </dependency>
+    <dependency>
+      <groupId>keechma</groupId>
+      <artifactId>entitydb</artifactId>
+      <version>0.1.0</version>
     </dependency>
   </dependencies>
 </project>

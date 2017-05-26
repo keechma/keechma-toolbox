@@ -11,36 +11,36 @@
   (->Error type nil payload nil))
 
 (defprotocol ISideffect
-  (call! [this controller ops app-db-atom]))
+  (call! [this controller app-db-atom]))
 
 (defrecord CommitSideffect [value cb]
   ISideffect
-  (call! [this _ _ app-db-atom]
+  (call! [this _ app-db-atom]
     (let [cb (:cb this)]
       (reset! app-db-atom (:value this))
       (when cb (cb)))))
 
 (defrecord SendCommandSideffect [command payload]
   ISideffect
-  (call! [this controller _ _]
+  (call! [this controller _]
     (controller/send-command controller (:command this) (:payload this))))
 
 (defrecord ExecuteSideffect [command payload]
   ISideffect
-  (call! [this controller _ _]
+  (call! [this controller _]
     (controller/execute controller (:command this) (:payload this))))
 
 (defrecord RedirectSideffect [params]
   ISideffect
-  (call! [this controller _ _]
+  (call! [this controller _]
     (controller/redirect controller (:params this))))
 
 (defrecord DoSideffect [sideffects]
   ISideffect
-  (call! [this controller ops app-db-atom]
+  (call! [this controller app-db-atom]
     (let [sideffects (:sideffects this)]
       (doseq [s sideffects]
-        (call! s controller ops app-db-atom)))))
+        (call! s controller app-db-atom)))))
 
 (defn commit!
   ([value] (commit! value nil))
@@ -88,19 +88,17 @@
         {:value ret-val
          :promise? (is-promise? ret-val)}))
     (catch :default err
-      (cond
-        (or (instance? ExceptionInfo err) (instance? js/Error err)) (throw err)
-        :else  {:value (process-error err)
-                :promise? false}))))
+      (if (= ::pipeline-error (:type (.-data err)))
+        (throw err)
+        {:value (process-error err)
+         :promise? false}))))
 
 (defn extract-nil [value]
   (if (= ::nil value) nil value))
 
 (defn run-pipeline [pipeline ctrl app-db-atom value]
   (let [{:keys [begin rescue]} pipeline
-        current-promise (atom nil)
-        ops {}] ;; REMOVE THIS WHEN REMOVING PIPELINE v1
-
+        current-promise (atom nil) ]
     (p/promise
      (fn [resolve reject on-cancel]
        (on-cancel (fn []
@@ -121,9 +119,9 @@
                    resolved-value (if promise? (extract-nil (<! (promise->chan value))) value)
                    error? (instance? Error resolved-value)]
                (when (and promise? sideffect?)
-                 (throw (ex-info (:async-sideffect pipeline-errors) {})))
+                 (throw (ex-info (:async-sideffect pipeline-errors) {:type ::pipeline-error})))
                (when sideffect?
-                 (call! resolved-value ctrl ops app-db-atom))
+                 (call! resolved-value ctrl app-db-atom))
                (cond
                  (and error? (= block :begin))
                  (if (seq rescue)

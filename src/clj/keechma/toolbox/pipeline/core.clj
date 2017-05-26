@@ -4,7 +4,8 @@
             [clojure.walk :refer [prewalk]]))
 
 (defn extract-pipeline-parts [args body]
-  (let [has-rescue-block? (= "rescue!" (name (first (last body))))
+  (let [last-block (last body)
+        has-rescue-block? (and (seq? last-block) (= "rescue!" (name (first last-block))))
         [begin-body rescue] (if has-rescue-block? [(drop-last body) (last body)] [body nil])
         [_ rescue-args & rescue-body] rescue]
     {:begin-args args
@@ -27,7 +28,9 @@
       (throw (ex-info "Pipeline catch block takes exactly one argument: error" {}))
       (assoc acc :rescue (expand-body (into [] (concat begin-args rescue-args)) rescue-body)))))
 
-(defn make-pipeline [args body]
+(defn make-pipeline [args] args)
+
+(defn prepare-pipeline [args body]
   (let [pipeline-parts (extract-pipeline-parts args body)]
     `(keechma.toolbox.pipeline.core/make-pipeline
       ~(-> {}
@@ -35,4 +38,4 @@
            (rescue-forms pipeline-parts)))))
 
 (defmacro pipeline! [args & body]
-  (make-pipeline args body))
+  (prepare-pipeline args (or body `())))
