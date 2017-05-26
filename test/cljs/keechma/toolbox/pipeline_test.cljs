@@ -133,3 +133,31 @@
                     :components  app-components
                     :html-element target-el}]
            (app-state/start! app))))
+
+(defn cancelable-promise [called-atom]
+  (p/promise (fn [resolve reject on-cancel]
+               (on-cancel #(swap! called-atom inc))
+               (js/setTimeout resolve 10))))
+
+(defn make-exclusive-pipeline-controller [called-atom done]
+  (pp-controller/constructor
+   (fn [_] true)
+   {:start (pipeline! [value app-db]
+             (pp/execute! :exclusive true)
+             (pp/execute! :exclusive true)
+             (pp/execute! :exclusive true))
+    :exclusive (pp/exclusive
+                (pipeline! [value app-db]
+                  (cancelable-promise called-atom)
+                  (is (= 2 @called-atom))
+                  (pp/commit! (assoc-in app-db [:kv :count] (inc (or (get-in app-db [:kv :count]) 0))))
+                  (is (= 1 (get-in app-db [:kv :count])))
+                  (done)))}))
+
+(deftest exclusive-pipeline
+  (async done
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:basic (make-exclusive-pipeline-controller (atom 0) done)}
+                    :components  app-components
+                    :html-element target-el}]
+           (app-state/start! app))))
