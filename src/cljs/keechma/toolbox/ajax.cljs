@@ -7,7 +7,7 @@
     (p/promise
      (fn [resolve reject on-cancel]
        (let [r (method url (merge opts {:handler resolve :error-handler reject}))]
-         (on-cancel #(ajax/abort r)))))))
+         (when (fn? on-cancel) (on-cancel #(ajax/abort r))))))))
 
 (def GET (promisify ajax/GET))
 (def HEAD (promisify ajax/HEAD))

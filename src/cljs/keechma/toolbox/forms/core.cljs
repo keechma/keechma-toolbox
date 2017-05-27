@@ -38,9 +38,9 @@
     Formatting funtion should have a `format-chars` meta-data entry, which will be used to correctly position the cursor after formatting. Formatting function should be able to take in the formatted data, extract the value and format the data again. It should also handle corner cases like `nil` or empty string.
     ")
   (on-submit-error [this app-db form-props data error]
-    "This function will be called if the `submit-data` function throws or rejects the returned promise. It should return a pipeline sideffect.")
+    "This function will be called if the `submit-data` function throws or rejects the returned promise. It should return a pipeline sideffect or a pipeline.")
   (on-submit-success [this app-db form-props data]
-    "This function will be called if the `submit-data` function returns a value or resolves a returned promise. It should return a pipeline sideffect.")
+    "This function will be called if the `submit-data` function returns a value or resolves a returned promise. It should return a pipeline sideffect or a pipeline.")
 
   (on-update-error [this app-db form-props data error]
     "This function will be called if the `update-data` function throws or rejects the returned promise. It should return a new form data state.")

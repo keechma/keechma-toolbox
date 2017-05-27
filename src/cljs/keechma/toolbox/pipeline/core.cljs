@@ -1,7 +1,7 @@
 (ns keechma.toolbox.pipeline.core
   (:require [cljs.core.async :refer [<! chan put!]]
             [promesa.core :as p]
-            [promesa.impl.promise :refer [Promise]]
+            [promesa.impl :refer [Promise]]
             [keechma.controller :as controller])
   (:require-macros [cljs.core.async.macros :refer [go-loop]]))
 
@@ -96,15 +96,19 @@
 (defn extract-nil [value]
   (if (= ::nil value) nil value))
 
+(defn pending-and-cancelable? [promise]
+  (and (p/pending? promise) (fn? (.-cancel promise))))
+
 (defn run-pipeline [pipeline ctrl app-db-atom value]
   (let [{:keys [begin rescue]} pipeline
-        current-promise (atom nil) ]
+        current-promise (atom nil)]
     (p/promise
      (fn [resolve reject on-cancel]
-       (on-cancel (fn []
-                    (let [c @current-promise]
-                      (when (p/pending? c)
-                        (p/cancel! c)))))
+       (when (fn? on-cancel)
+         (on-cancel (fn []
+                      (let [c @current-promise]
+                        (when (pending-and-cancelable? c)
+                          (.cancel c))))))
        (go-loop [block :begin
                  actions begin
                  prev-value value
@@ -113,6 +117,7 @@
            (resolve prev-value)
            (let [next (first actions)
                  {:keys [value promise?]} (action-ret-val next ctrl app-db-atom prev-value error)]
+
              (when promise?
                (reset! current-promise value))
              (let [sideffect? (satisfies? ISideffect value)
@@ -146,7 +151,7 @@
 (defn exclusive [pipeline]
   (let [current (atom nil)]
     (fn [ctrl app-db-atom value]
-      (let [c @current]
-        (when (and c (p/pending? c))
-          (p/cancel! c))
-        (reset! current (pipeline ctrl app-db-atom value))))))
+      (when-let [c @current]
+        (when (pending-and-cancelable? c)
+          (.cancel c)))
+      (reset! current (pipeline ctrl app-db-atom value)))))

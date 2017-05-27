@@ -3,7 +3,10 @@
             [keechma.toolbox.pipeline.controller :as pp-controller]
             [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline!]]
             [keechma.app-state :as app-state]
-            [promesa.core :as p]))
+            [promesa.core :as p]
+            [promesa.impl :refer [Promise]]))
+
+(.config Promise #js {:cancellation true})
 
 (def app-components
   {:main {:renderer (fn [_] [:div])}})
@@ -107,10 +110,11 @@
                     :html-element target-el}]
            (app-state/start! app))))
 
+(def promise-error (js/Error. "Promise Rejected"))
 
 (defn fn-promise-rejecting []
   (p/promise (fn [_ reject]
-               (reject {:promise :rejected}))))
+               (reject promise-error))))
 
 (defn make-fn-promise-rejecting-pipeline-controller [done]
   (pp-controller/constructor
@@ -123,7 +127,7 @@
              (rescue! [error]
                (is (= {:foo :bar} value))
                (is (= :some-value (get-in app-db [:kv :value])))
-               (is (= (:payload error) {:promise :rejected}))
+               (is (= (:payload error) promise-error))
                (done)))}))
 
 (deftest promise-rejecting-pipeline
@@ -136,8 +140,8 @@
 
 (defn cancelable-promise [called-atom]
   (p/promise (fn [resolve reject on-cancel]
-               (on-cancel #(swap! called-atom inc))
-               (js/setTimeout resolve 10))))
+               (when (fn? on-cancel) (on-cancel #(swap! called-atom inc)))
+               (js/setTimeout resolve 50))))
 
 (defn make-exclusive-pipeline-controller [called-atom done]
   (pp-controller/constructor
@@ -159,5 +163,6 @@
          (let [target-el (add-mount-target-el)
                app {:controllers {:basic (make-exclusive-pipeline-controller (atom 0) done)}
                     :components  app-components
-                    :html-element target-el}]
+                    :html-element target-el}
+               _ (js/setTimeout done 9000)]
            (app-state/start! app))))

@@ -58,10 +58,7 @@
   (async done
          (let [dataloader (core/make-dataloader simple-datasources)
                app-db-atom (atom {})]
-           (->> (dataloader app-db-atom)
-                (p/error (fn []
-                           (is (= false true "Promise rejected"))
-                           (done)))
+           (->> (dataloader app-db-atom) 
                 (p/map (fn []
                          (let [app-db @app-db-atom]
                            (is (= "JWT!" (get-in app-db [:kv :jwt])))
@@ -94,7 +91,12 @@
                                                   :current-user-id 1}
                                    :favorites [{:id 3} {:id 4}]}
                                   (get-in app-db [:kv :favorites :current])))
-                           (done))))))))
+                           (done))))
+                (p/error (fn []
+                           (is (= false true "Promise rejected"))
+                           (done)))))))
+
+(def error-404 (js/Error. "404"))
 
 (def datasources-with-errors
   {:jwt                   
@@ -109,7 +111,7 @@
     :loader (fn [params]
               (map (fn [_]
                      (p/promise (fn [_ reject]
-                                  (js/setTimeout #(reject "404") 1)))) params))}
+                                  (js/setTimeout #(reject error-404) 1)))) params))}
 
    :current-user-favorites
    {:target [:kv :favorites :current]
@@ -130,9 +132,9 @@
                          (is (= @app-db-atom
                                 {:kv
                                  {:keechma.toolbox.dataloader.core/dataloader
-                                  {:current-user {:params nil, :status :error, :prev nil, :error "404"}
+                                  {:current-user {:params nil, :status :error, :prev nil, :error error-404}
                                    :current-user-favorites
-                                   {:params nil, :status :error, :prev nil, :error "404"}
+                                   {:params nil, :status :error, :prev nil, :error error-404}
                                    :jwt
                                    {:meta {}
                                     :params nil

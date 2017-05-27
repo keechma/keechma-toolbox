@@ -230,7 +230,9 @@
                 results-chan (chan)
                 plan (datasources-load-plan @app-db-atom datasources (concat independent (dep/topo-sort g)) edb-schema)
                 start-nodes (filter #(and (:reload? (get plan %)) (:deps-fulfilled? (get plan %))) (keys plan))]
-            (on-cancel #(swap! running? not))
+
+            (when (fn? on-cancel) (on-cancel #(swap! running? not)))
+
             (mark-pending! app-db-atom  edb-schema (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
             (start-loaders! app-db-atom datasources (select-keys datasources start-nodes) results-chan edb-schema)
             (go-loop []
@@ -250,4 +252,4 @@
                       nil)
                     (recur))
                   (resolve @app-db-atom))
-                (reject))))))))))
+                (reject (js/Error. "Dataloader Rejected")))))))))))

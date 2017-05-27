@@ -5,7 +5,7 @@
                  [binaryage/devtools "0.8.2"]
                  [keechma "0.2.0-SNAPSHOT-11" :exclusions [cljsjs/react-with-addons]]
                  [garden "1.3.2"]
-                 [funcool/promesa "1.6.0"]
+                 [funcool/promesa "1.8.1"]
                  [keechma/forms "0.1.2"]
                  [medley "0.8.4"]
                  [cljs-ajax "0.5.8"]
