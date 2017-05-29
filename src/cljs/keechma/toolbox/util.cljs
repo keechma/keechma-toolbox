@@ -1,7 +1,7 @@
 (ns keechma.toolbox.util
   (:require [clojure.string :as str]))
 
-(defn class-name->string [class-name]
+(defn ^:private class-name->string [class-name]
   (if (vector? class-name)
     (str/join " " (map (fn [c] (name (or c ""))) class-name))
     (name (or class-name ""))))

@@ -87,6 +87,7 @@
                                 {:params params
                                  :prev prev
                                  :datasource key
+                                 :app-db app-db
                                  :target target})))))))))
 
 (defn start-loaders! [app-db-atom app-datasources datasources results-chan edb-schema]

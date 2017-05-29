@@ -1,11 +1,17 @@
 (ns keechma.toolbox.ui
   (:require [keechma.ui-component :as ui]))
 
-(defn sub> [ctx subscription & args]
+(defn sub>
+  "Read and defer a component subscription"
+  [ctx subscription & args]
   (deref (ui/subscription ctx subscription args)))
 
-(defn <cmd [ctx command & args]
+(defn <cmd
+  "Send a command to the controller"
+  [ctx command & args]
   (apply ui/send-command ctx command args))
 
-(defn route> [ctx]
+(defn route>
+  "Read current route data. Derefs the route subscription"
+  [ctx]
   (:data (deref (ui/current-route ctx))))

@@ -1,4 +1,5 @@
-(defproject keechma/toolbox "0.0.1-SNAPSHOT-3"
+(defproject keechma/toolbox "0.0.1-SNAPSHOT-4"
+  :description "Keechma Toolbox"
   :dependencies [[org.clojure/clojure "1.9.0-alpha15"]
                  [org.clojure/clojurescript "1.9.229"]
                  [reagent "0.6.0"]
@@ -16,7 +17,13 @@
 
   :source-paths ["src/clj" "src/cljs"]
 
-  :plugins [[lein-cljsbuild "1.1.4"]]
+  
+  :codox {:language :clojurescript
+          :metadata {:doc/format :markdown}
+          :namespaces [keechma.toolbox.dataloader.controller keechma.toolbox.pipeline.controller keechma.toolbox.dataloader.subscriptions keechma.toolbox.ui]}
+
+  :plugins [[lein-cljsbuild "1.1.4"]
+            [lein-codox "0.9.3"]]
 
   :clean-targets ^{:protect false} ["resources/public/js/compiled"
                                     "target"
