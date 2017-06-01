@@ -20,7 +20,7 @@
   
   :codox {:language :clojurescript
           :metadata {:doc/format :markdown}
-          :namespaces [keechma.toolbox.dataloader.controller keechma.toolbox.pipeline.controller keechma.toolbox.dataloader.subscriptions keechma.toolbox.ui]}
+          :namespaces [keechma.toolbox.dataloader.controller keechma.toolbox.pipeline.controller keechma.toolbox.pipeline.core keechma.toolbox.dataloader.subscriptions keechma.toolbox.ui]}
 
   :plugins [[lein-cljsbuild "1.1.4"]
             [lein-codox "0.9.3"]]
