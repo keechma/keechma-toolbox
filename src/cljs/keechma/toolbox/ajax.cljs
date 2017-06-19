@@ -2,11 +2,15 @@
   (:require [promesa.core :as p]
             [ajax.core :as ajax]))
 
+(defn make-error-handler [reject]
+  (fn [error]
+    (reject (ex-info "AJAX Error" error))))
+
 (defn promisify [method]
   (fn [url opts]
     (p/promise
      (fn [resolve reject on-cancel]
-       (let [r (method url (merge opts {:handler resolve :error-handler reject}))]
+       (let [r (method url (merge opts {:handler resolve :error-handler (make-error-handler reject)}))]
          (when (fn? on-cancel) (on-cancel #(ajax/abort r))))))))
 
 (def GET (promisify ajax/GET))
