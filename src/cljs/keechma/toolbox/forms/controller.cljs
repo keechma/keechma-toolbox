@@ -181,7 +181,7 @@
         form-record (get-form-record forms-config form-props)
         processed-data (core/process-out form-record app-db form-props (:data form-state))]
     (promise-or-pipeline
-     (core/submit-data form-record app-db form-props processed-data)
+     (core/update-data form-record app-db form-props processed-data)
      #(assoc data :result %1))))
 
 (defn handle-on-update-success [app-db forms-config value]
