@@ -3,13 +3,13 @@
   <groupId>keechma</groupId>
   <artifactId>toolbox</artifactId>
   <packaging>jar</packaging>
-  <version>0.0.1-SNAPSHOT-3</version>
+  <version>0.0.1-SNAPSHOT-5</version>
   <name>toolbox</name>
-  <description/>
+  <description>Keechma Toolbox</description>
   <scm>
     <connection>scm:git:git://github.com/retro/keechma-toolbox.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/retro/keechma-toolbox.git</developerConnection>
-    <tag>c6dea05537c48d02365ed0c6394163de5d9e2362
+    <tag>e72a513e79e6d1f1f6a172cb37bd62eb72be5958
 </tag>
     <url>https://github.com/retro/keechma-toolbox</url>
   </scm>
@@ -112,7 +112,7 @@
     <dependency>
       <groupId>funcool</groupId>
       <artifactId>promesa</artifactId>
-      <version>1.6.0</version>
+      <version>1.8.1</version>
     </dependency>
     <dependency>
       <groupId>keechma</groupId>

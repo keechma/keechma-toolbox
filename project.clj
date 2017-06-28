@@ -1,4 +1,4 @@
-(defproject keechma/toolbox "0.0.1-SNAPSHOT-5"
+(defproject keechma/toolbox "0.0.1-SNAPSHOT-6"
   :description "Keechma Toolbox"
   :dependencies [[org.clojure/clojure "1.9.0-alpha15"]
                  [org.clojure/clojurescript "1.9.229"]
@@ -17,7 +17,7 @@
 
   :source-paths ["src/clj" "src/cljs"]
 
-  
+
   :codox {:language :clojurescript
           :metadata {:doc/format :markdown}
           :namespaces [keechma.toolbox.dataloader.controller keechma.toolbox.pipeline.controller keechma.toolbox.pipeline.core keechma.toolbox.dataloader.subscriptions keechma.toolbox.ui]}
