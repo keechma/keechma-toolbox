@@ -1,7 +1,7 @@
-(defproject keechma/toolbox "0.0.1-SNAPSHOT-6"
+(defproject keechma/toolbox "0.0.1-SNAPSHOT-7"
   :description "Keechma Toolbox"
-  :dependencies [[org.clojure/clojure "1.9.0-alpha15"]
-                 [org.clojure/clojurescript "1.9.229"]
+  :dependencies [[org.clojure/clojure "1.9.0-alpha17"]
+                 [org.clojure/clojurescript "1.9.854"]
                  [reagent "0.6.0"]
                  [binaryage/devtools "0.8.2"]
                  [keechma "0.2.0-SNAPSHOT-11" :exclusions [cljsjs/react-with-addons]]
@@ -22,7 +22,7 @@
           :metadata {:doc/format :markdown}
           :namespaces [keechma.toolbox.dataloader.controller keechma.toolbox.pipeline.controller keechma.toolbox.pipeline.core keechma.toolbox.dataloader.subscriptions keechma.toolbox.ui]}
 
-  :plugins [[lein-cljsbuild "1.1.4"]
+  :plugins [[lein-cljsbuild "1.1.7"]
             [lein-codox "0.9.3"]]
 
   :clean-targets ^{:protect false} ["resources/public/js/compiled"
