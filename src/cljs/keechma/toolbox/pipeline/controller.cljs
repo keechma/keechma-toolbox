@@ -9,10 +9,11 @@
   (params [this route-params]
     ((:params-fn this) route-params))
   (start [this params app-db]
-    (controller/execute this :start params)
+    ;; Use apply until we figure out why ClojureScript 1.9.854 is breaking with out it
+    (apply controller/execute [this :start params])
     app-db)
   (stop [this params app-db]
-    (controller/execute this :stop params)
+    (apply controller/execute [this :stop params])
     app-db)
   (handler [this app-db-atom in-chan _]
     (go-loop []
