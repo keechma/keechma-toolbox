@@ -24,7 +24,7 @@
   (:data route-params))
 
 (defmethod controller/start Controller [this route-params app-db]
-  (controller/execute this route-params app-db)
+  (controller/execute this :load-data)
   app-db)
 
 (defmethod controller/handler Controller [this app-db-atom in-chan out-chan]
