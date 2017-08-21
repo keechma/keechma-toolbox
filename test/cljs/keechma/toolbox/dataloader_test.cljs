@@ -307,6 +307,8 @@
                            (is (= "JWT" (get-in app-db [:kv :jwt])))
                            (done))))))))
 
+
+
 (def datasources-with-removing-edb-collection
   {:users {:target [:edb/collection :user/list]
            :params (fn [prev route _]
@@ -336,3 +338,59 @@
                                edb (:entity-db app-db)]
                            (is (= [] (edb/get-collection edb-schema edb :user :list)))
                            (done))))))))
+
+(def datasources-with-edb-relations
+  {:current-article {:target [:edb/named-item :article/current]
+                     :loader (fn [loader-params]
+                               (map (fn [p] 
+                                      (core/->EntityDBWithRelations
+                                       {:id 3
+                                        :tags [{:id 1} {:id 3}]
+                                        :name "article 3"
+                                        :author {:id 2}}
+                                       {:author {:id 2 :name "Author 2"}
+                                        :tag [{:id 1 :tag "tag1"} {:id 3 :tag "tag3"}]}))
+                                    loader-params))
+                     :params (fn [prev route deps])}
+   :articles {:target [:edb/collection :article/list]
+              :loader (fn [loader-params]
+                        (map (fn [p]
+                               (core/->EntityDBWithRelations
+                                [{:id 1 :name "article 1 name" :tags [{:id 1} {:id 2}] :author {:id 1}}
+                                 {:id 2 :name "article 2 name" :author {:id 2}}]
+                                {:tag [{:id 1 :tag "tag1"}
+                                       {:id 2 :tag "tag2"}]
+                                 :author [{:id 2 :name "Author 2"}
+                                          {:id 1 :name "Author 1"}]}))
+                             loader-params))
+              :params (fn [prev route deps] )}})
+
+
+(deftest inserting-related-items
+  (let [app-db-atom (atom {:route {:data {}}})
+        edb-schema {:article {:id :id :relations {:author [:one :author]
+                                                  :tags [:many :tag]}}
+                    :tag {:id :id}
+                    :author {:id :id}}
+        dataloader (core/make-dataloader datasources-with-edb-relations edb-schema)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (is (= {:article
+                                 {:c-one {:current 3}
+                                  :store
+                                  {1 {:name "article 1 name" :id 1}
+                                   2 {:name "article 2 name" :id 2}
+                                   3 {:name "article 3" :id 3}}
+                                  :c-many {:list [1 2]}}
+                                 :author
+                                 {:c-one
+                                  {[:article 3 :author] 2 [:article 1 :author] 1 [:article 2 :author] 2}
+                                  :store {1 {:name "Author 1" :id 1} 2 {:name "Author 2" :id 2}}}
+                                 :tag
+                                 {:store
+                                  {1 {:id 1 :tag "tag1"} 2 {:id 2 :tag "tag2"} 3 {:id 3 :tag "tag3"}}
+                                  :c-many {[:article 3 :tags] [1 3] [:article 1 :tags] [1 2]}}}
+                                (:entity-db @app-db-atom)))
+                         (done)))
+                ))))
