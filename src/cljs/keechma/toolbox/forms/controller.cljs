@@ -131,7 +131,7 @@
                 (if (should-immediately-validate? attr-valid? element)
                   (mark-dirty-and-validate form-record new-state)
                   new-state))
-     (when (and element formatter caret-pos)
+     (if (and element formatter caret-pos)
        (fn []
          (cursor/set-caret-pos! element
                                 (:format-chars (meta formatter))
@@ -139,7 +139,8 @@
                                 formatted-value
                                 (formatter old-value nil)
                                 caret-pos)
-         (reagent/flush)))]))
+         (reagent/flush))
+       reagent/flush)]))
 
 (defn handle-on-blur [app-db forms-config [form-props path]]
   (let [form-state (get-form-state app-db form-props)
