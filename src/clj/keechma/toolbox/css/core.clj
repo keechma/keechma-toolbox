@@ -12,11 +12,13 @@
     (throw "Args must have even number of elements")
     (let [config (apply hash-map args)
           tag (:tag config) 
-          el-class (str "." (ns-name->class (ns-name *ns*)) "-" (gensym name))
+          ns-name-class (ns-name->class (ns-name *ns*))
+          el-class (str ns-name-class "-" (gensym name))
+          generic-el-class (str ns-name-class "-" name)
           el-class-keyword (keyword el-class)
           classes (:class config)
           styles (or (:style config) {})
           el-name (symbol name)]
       `(do
          (keechma.toolbox.css.core/register-component-styles ~el-class-keyword ~styles)
-         (def ~el-name (str (name (or '~tag "div")) "." ~el-class "." (str/join "." (map name ~classes))))))))
+         (def ~el-name (str (name (or '~tag "div")) "." ~el-class "." ~generic-el-class "." (str/join "." (map name ~classes))))))))
