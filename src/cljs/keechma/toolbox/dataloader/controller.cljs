@@ -32,7 +32,7 @@
     (let [[command args] (<! in-chan)]
       (when command
         (case command
-          :load-data (do (->> ((:dataloader this) app-db-atom)
+          :load-data (do (->> ((:dataloader this) app-db-atom (controller/context this))
                               (p/map #(controller/execute this :loaded-data)))
                          (recur waits))
           :loaded-data (do

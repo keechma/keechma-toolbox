@@ -394,3 +394,22 @@
                                 (:entity-db @app-db-atom)))
                          (done)))
                 ))))
+
+(def datasources-with-context-loader
+  {:foo {:loader (fn [reqs context]
+                   (map (fn [r]
+                          (let [loader (get context :loader)]
+                            (loader (:params r))))
+                        reqs))
+         :params (fn [_ _ _])
+         :target [:foo]}})
+
+(deftest using-context-in-loader
+  (let [context {:loader (fn [params] {:source :context})}
+        app-db-atom (atom {:route {:data {}}})
+        dataloader (core/make-dataloader datasources-with-context-loader)]
+    (async done
+           (->> (dataloader app-db-atom context)
+                (p/map (fn []
+                         (is (= {:source :context} (:foo @app-db-atom)))
+                         (done)))))))

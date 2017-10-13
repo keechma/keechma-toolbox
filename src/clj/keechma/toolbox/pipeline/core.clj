@@ -1,5 +1,6 @@
 (ns keechma.toolbox.pipeline.core
   (:require [clojure.set :as set]
+            [clojure.string :as str]
             [clojure.pprint :refer [pprint]]
             [clojure.walk :refer [prewalk]]))
 
@@ -14,19 +15,25 @@
      :rescue-body rescue-body}))
 
 (defn expand-body [args body]
-  (into [] (map (fn [f] `(fn ~args ~f)) body)))
+  (into [] (map (fn [f] `(fn ~args {:val ~f :repr ~(str/trim (with-out-str (pprint f)))})) body)))
+
+(defn prepare-body-args [args]
+  (if (= 2 (count args))
+    (conj args '_)
+    args))
 
 (defn begin-forms [acc {:keys [begin-args begin-body]}]
-  (if (not= 2 (count begin-args))
-    (throw (ex-info "Pipeline takes exactly two arguments: value and app-db" {}))
-    (assoc acc :begin (expand-body begin-args begin-body))))
+  (if (and (not= 2 (count begin-args))
+           (not= 3 (count begin-args)))
+    (throw (ex-info "Pipeline accepts two or three arguments: value app-db context?" {}))
+    (assoc acc :begin (expand-body (prepare-body-args begin-args) begin-body))))
 
 (defn rescue-forms [acc {:keys [begin-args rescue-args rescue-body]}]
   (if (or (nil? rescue-args) (nil? rescue-body))
     acc
     (if (not= 1 (count rescue-args))
       (throw (ex-info "Pipeline catch block takes exactly one argument: error" {}))
-      (assoc acc :rescue (expand-body (into [] (concat begin-args rescue-args)) rescue-body)))))
+      (assoc acc :rescue (expand-body (into [] (concat (prepare-body-args begin-args) rescue-args)) rescue-body)))))
 
 (defn make-pipeline [args] args)
 

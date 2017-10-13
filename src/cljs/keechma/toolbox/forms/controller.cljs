@@ -261,7 +261,10 @@
 
 
 (defn make-controller [forms-config]
-  (pp-controller/constructor (fn [] true) (actions forms-config)))
+  (let [ctrl (pp-controller/constructor (fn [] true) {})
+        context (:context ctrl)
+        forms-config-with-context (reduce-kv (fn [m k v] (assoc m k (assoc v :context context))) {} forms-config)]
+    (assoc ctrl :pipelines (actions forms-config-with-context))))
 
 (defn register
   ([forms-config] (register {} forms-config))
