@@ -3,13 +3,13 @@
   <groupId>keechma</groupId>
   <artifactId>toolbox</artifactId>
   <packaging>jar</packaging>
-  <version>0.0.1-SNAPSHOT-5</version>
+  <version>0.1.0-SNAPSHOT-4</version>
   <name>toolbox</name>
   <description>Keechma Toolbox</description>
   <scm>
     <connection>scm:git:git://github.com/retro/keechma-toolbox.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/retro/keechma-toolbox.git</developerConnection>
-    <tag>e72a513e79e6d1f1f6a172cb37bd62eb72be5958
+    <tag>a98591175f9a32bf704baff35012e057ec88a1e7
 </tag>
     <url>https://github.com/retro/keechma-toolbox</url>
   </scm>
@@ -76,12 +76,12 @@
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
-      <version>1.9.0-alpha15</version>
+      <version>1.9.0-alpha17</version>
     </dependency>
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojurescript</artifactId>
-      <version>1.9.229</version>
+      <version>1.9.854</version>
     </dependency>
     <dependency>
       <groupId>reagent</groupId>
