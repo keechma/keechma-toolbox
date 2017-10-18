@@ -4,7 +4,7 @@
                  [org.clojure/clojurescript "1.9.854"]
                  [reagent "0.6.0"]
                  [binaryage/devtools "0.8.2"]
-                 [keechma "0.2.0-SNAPSHOT-11" :exclusions [cljsjs/react-with-addons]]
+                 [keechma "0.3.0" :exclusions [cljsjs/react-with-addons]]
                  [garden "1.3.2"]
                  [funcool/promesa "1.8.1"]
                  [keechma/forms "0.1.2"]
