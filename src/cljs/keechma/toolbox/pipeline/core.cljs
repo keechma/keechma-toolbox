@@ -181,7 +181,8 @@ Runs multiple sideffects sequentially:
                    (recur :rescue rescue prev-value resolved-value)
                    (reject resolved-value))
 
-                 (and error? (= block :rescue))
+                 (and error? (= block :rescue)
+                      (not= error resolved-value))
                  (reject error)
 
                  sideffect?
