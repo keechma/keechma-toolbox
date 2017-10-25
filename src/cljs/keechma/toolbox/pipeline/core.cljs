@@ -176,6 +176,9 @@ Runs multiple sideffects sequentially:
                (when sideffect?
                  (call! resolved-value ctrl app-db-atom))
                (cond
+                 (= ::break resolved-value)
+                 (resolve ::break)
+
                  (and error? (= block :begin))
                  (if (seq rescue)
                    (recur :rescue rescue prev-value resolved-value)
