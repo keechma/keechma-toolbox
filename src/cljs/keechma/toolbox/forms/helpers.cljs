@@ -73,6 +73,12 @@
    :set-value (fn [path value]
                 (let [path (keechma-forms-util/key-to-path path)]
                   (ui/send-command ctx :on-change [form-props path nil value nil])))
+   :set-value-without-immediate-validation
+   (fn [path value]
+     (let [path (keechma-forms-util/key-to-path path)]
+       (ui/send-command ctx :on-change [form-props path :keechma.toolbox.forms.core/no-immediate-validation value nil])))
    :submit (fn [e]
              (when e (.preventDefault e))
-             (ui/send-command ctx :on-submit form-props))})
+             (ui/send-command ctx :on-submit form-props))
+   :call (fn [args]
+           (ui/send-command ctx :call [form-props args]))})

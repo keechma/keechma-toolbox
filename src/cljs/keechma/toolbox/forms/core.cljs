@@ -48,6 +48,12 @@
 (defmulti on-submit-error
   "This function will be called if the `submit-data` function throws or rejects the returned promise. It should return a pipeline sideffect or a pipeline."
   form-type)
+(defmulti on-mount
+  "This function is called immediately after `get-data` in the mount form process. You can return pipeline! from this function."
+  form-type)
+(defmulti on-unmount
+  "This function is called before the form is unmounted. You can return pipeline from this function"
+  form-type)
 (defmulti on-submit-success
   "This function will be called if the `submit-data` function returns a value or resolves a returned promise. It should return a pipeline sideffect or a pipeline."
   form-type)
@@ -59,6 +65,8 @@
   form-type)
 (defmulti validate form-type)
 
+(defmulti call form-type)
+
 (defmethod get-data :default [this app-db form-props] {})
 (defmethod submit-data :default [this app-db form-props data] data)
 (defmethod update-data :default [this app-db form-props data] data)
@@ -66,10 +74,13 @@
 (defmethod process-out :default [this app-db form-props data] data)
 (defmethod process-attr-with :default [this path])
 (defmethod format-attr-with :default [this path])
+(defmethod on-mount :default [this app-db form-props])
+(defmethod on-unmount :default [this app-db form-props])
 (defmethod on-submit-error :default [this app-db form-props data error])
 (defmethod on-submit-success :default [this app-db form-props data])
 (defmethod on-update-error :default [this app-db form-props data error] data)
 (defmethod on-update-success :default [this app-db form-props data new-data] new-data)
+(defmethod call :default [this app-db form-props args])
 (defmethod validate :default [this data]
   (let [validator (:validator this)]
     (if validator

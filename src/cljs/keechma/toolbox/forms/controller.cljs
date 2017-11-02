@@ -52,6 +52,7 @@
   (cond
     (not attr-valid?) true
     (nil? element) true
+    (= element :keechma.toolbox.forms.core/no-immediate-validation) false
     (= "text" (.-type element)) false
     (= "textarea" (.-tagName element)) false
     :else true))
@@ -148,6 +149,25 @@
     (assoc-in app-db [:kv core/id-key :states form-props]
               (mark-dirty-and-validate form-record form-state))))
 
+(defn handle-call [app-db forms-config [form-props args]]
+  (let [form-state (get-form-state app-db form-props)
+        form-record (get-form-record forms-config form-props)]
+    (core/call form-record app-db form-props args)))
+
+(defn handle-on-mount [app-db forms-config form-props]
+  (let [form-state (get-form-state app-db form-props)
+        form-record (get-form-record forms-config form-props)]
+    (pipeline! [value app-db]
+      (core/on-mount form-record app-db form-props)
+      nil)))
+
+(defn handle-on-unmount [app-db forms-config form-props]
+  (let [form-state (get-form-state app-db form-props)
+        form-record (get-form-record forms-config form-props)]
+    (pipeline! [value app-db]
+      (core/on-unmount form-record app-db form-props)
+      nil)))
+
 (defn handle-on-validate [app-db forms-config [form-props dirty-only?]]
   (let [form-state (get-form-state app-db form-props)
         form-record (get-form-record forms-config form-props)]
@@ -213,12 +233,15 @@
                   (pp/commit! (premount-form app-db value))
                   (get-initial-state app-db forms-config value)
                   (pp/commit! (mount-form app-db forms-config value))
+                  (handle-on-mount app-db forms-config (:form-props value))
                   (rescue! [error]
                     (pp/commit! (update-form-state app-db forms-config
                                                    :mount-failed (:payload error) value))))
 
    :unmount-form (pipeline! [value app-db]
-                   (pp/commit! (unmount-form app-db {:form-props value})))
+                   {:form-props value}
+                   (handle-on-unmount app-db forms-config (:form-props value))
+                   (pp/commit! (unmount-form app-db value)))
 
    :submit-form (pipeline! [value app-db]
                   (pp/commit! (update-form-state app-db forms-config :submitting nil value))
@@ -257,7 +280,10 @@
 
    :on-submit   (pipeline! [value app-db]
                   {:form-props value}
-                  (handle-on-submit app-db forms-config value))})
+                  (handle-on-submit app-db forms-config value))
+   
+   :call (pipeline! [value app-db]
+           (handle-call app-db forms-config value))})
 
 
 (defn make-controller [forms-config]
