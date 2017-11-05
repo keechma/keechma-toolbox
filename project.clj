@@ -1,4 +1,4 @@
-(defproject keechma/toolbox "0.1.3"
+(defproject keechma/toolbox "0.1.4"
   :description "Keechma Toolbox"
   :dependencies [[org.clojure/clojure "1.9.0-alpha17"]
                  [org.clojure/clojurescript "1.9.854"]
