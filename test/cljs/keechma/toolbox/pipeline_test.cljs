@@ -26,6 +26,10 @@
     (.appendChild (.-body js/document) div)
     div))
 
+(defn is-returning-nil [check]
+  (is check)
+  nil)
+
 (defn make-basic-pipeline-controller [done]
   (pp-controller/constructor
    (fn [_] true)
@@ -38,13 +42,13 @@
              (pp/commit! (assoc-in app-db [:kv :count] (inc (get-in app-db [:kv :count]))))
              (is (= 2 (get-in app-db [:kv :count])))
              {:foo :bar}
-             (= {:foo :bar} value)
+             (is-returning-nil (= {:foo :bar} value))
              nil
-             (= {:foo :bar} value)
+             (is-returning-nil (= {:foo :bar} value))
              (fn-returning-value)
-             (= {:baz :qux} value)
+             (is-returning-nil (= {:baz :qux} value))
              (fn-returning-nil)
-             (= {:baz :qux} value)
+             (is-returning-nil (= {:baz :qux} value))
              (pipeline! [value app-db]
                (= {:baz :qux} value)
                (.getTime (js/Date.))
@@ -57,6 +61,9 @@
              (pp/execute! :some-action :some-payload)
              (delay-pipeline 10)
              (is (= (get-in app-db [:kv :some-action-payload]) :some-payload))
+             (pp/run-pipeline! :some-action-2 :some-payload-2)
+             (is (= (get-in app-db [:kv :some-action-2-payload]) :some-payload-2))
+
              (pp/do!
               (pp/commit! (assoc-in app-db [:kv :count] 3))
               (pp/redirect! {:foo "bar"}))
@@ -66,6 +73,8 @@
              (delay-pipeline 1)
              (is (= :receiver-payload (get-in app-db [:kv :receiver-payload])))
              (done))
+    :some-action-2 (pipeline! [value app-db]
+                     (pp/commit! (assoc-in app-db [:kv :some-action-2-payload] value)))
     :some-action (pipeline! [value app-db]
                    (pp/commit! (assoc-in app-db [:kv :some-action-payload] value)))}))
 

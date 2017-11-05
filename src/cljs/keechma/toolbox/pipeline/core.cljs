@@ -42,6 +42,14 @@
       (doseq [s sideffects]
         (call! s controller app-db-atom)))))
 
+(defrecord RunPipelineSideffect [pipeline-key args]
+  ISideffect
+  (call! [this controller app-db-atom]
+    (let [pipeline (get-in controller [:pipelines pipeline-key])]
+      (if pipeline
+        (pipeline controller app-db-atom args)
+        (throw (ex-info ("Pipeline " pipeline-key "doesn't exist") {:pipeline pipeline-key}))))))
+
 (defn commit!
   "
 Commit pipeline sideffect.
@@ -101,6 +109,12 @@ Runs multiple sideffects sequentially:
 "
   [& sideffects]
   (->DoSideffect sideffects))
+
+(defn run-pipeline!
+  "Runs a pipeline in a way that blocks the current pipeline until the current pipeline is done. It behaves same as `execute! but blocks the parent pipeline until it's done. Return value and errors will be ignored by the parent pipeline."
+  ([pipeline-key] (run-pipeline! pipeline-key nil))
+  ([pipeline-key args]
+   (->RunPipelineSideffect pipeline-key args)))
 
 (defn ^:private process-error [err]
   (cond
@@ -163,18 +177,20 @@ Runs multiple sideffects sequentially:
          (if (not (seq actions))
            (resolve prev-value)
            (let [next (first actions)
-                 {:keys [value promise? repr]} (action-ret-val next ctrl context app-db-atom prev-value error)]
+                 {:keys [value promise? repr]} (action-ret-val next ctrl context app-db-atom prev-value error)
+                 sideffect? (satisfies? ISideffect value)]
              (when promise?
                (reset! current-promise value))
              ;;(when repr (println "STARTING" repr))
-             (let [sideffect? (satisfies? ISideffect value)
-                   resolved-value (if promise? (extract-nil (<! (promise->chan value))) value)
+             (let [resolved-value (if promise? (extract-nil (<! (promise->chan value))) value)
                    error? (instance? Error resolved-value)]
                ;;(when repr (println "ENDING" repr))
                (when (and promise? sideffect?)
                  (throw (ex-info (:async-sideffect pipeline-errors) {:type ::pipeline-error})))
                (when sideffect?
-                 (call! resolved-value ctrl app-db-atom))
+                 (let [sideffect-value (call! resolved-value ctrl app-db-atom)]
+                   (when (is-promise? sideffect-value)
+                     (<! (promise->chan sideffect-value)))))
                (cond
                  (= ::break resolved-value)
                  (resolve ::break)
