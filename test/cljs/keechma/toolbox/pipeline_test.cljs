@@ -63,7 +63,6 @@
              (is (= (get-in app-db [:kv :some-action-payload]) :some-payload))
              (pp/run-pipeline! :some-action-2 :some-payload-2)
              (is (= (get-in app-db [:kv :some-action-2-payload]) :some-payload-2))
-
              (pp/do!
               (pp/commit! (assoc-in app-db [:kv :count] 3))
               (pp/redirect! {:foo "bar"}))
@@ -174,4 +173,24 @@
                     :components  app-components
                     :html-element target-el}
                _ (js/setTimeout done 9000)]
+           (app-state/start! app))))
+
+
+(defn run-pipeline-breaks-into-rescue-if-pipeline-doesnt-exist [done]
+  (pp-controller/constructor
+   (fn [_] true)
+   {:start (pipeline! [value app-db]
+             (pp/run-pipeline! :foo)
+             (is false "This shouldn't run")
+             (done)
+             (rescue! [error]
+               (is true)
+               (done)))}))
+
+(deftest run-pipeline-breaks-into-rescue-if-pipeline-doesnt-exist-test
+  (async done
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:basic (run-pipeline-breaks-into-rescue-if-pipeline-doesnt-exist done)}
+                    :components  app-components
+                    :html-element target-el}]
            (app-state/start! app))))

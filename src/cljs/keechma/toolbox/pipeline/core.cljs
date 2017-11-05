@@ -48,7 +48,7 @@
     (let [pipeline (get-in controller [:pipelines pipeline-key])]
       (if pipeline
         (pipeline controller app-db-atom args)
-        (throw (ex-info ("Pipeline " pipeline-key "doesn't exist") {:pipeline pipeline-key}))))))
+        (throw (ex-info (str "Pipeline " pipeline-key " doesn't exist") {:pipeline pipeline-key}))))))
 
 (defn commit!
   "
@@ -159,6 +159,14 @@ Runs multiple sideffects sequentially:
 (defn ^:private pending-and-cancelable? [promise]
   (and (p/pending? promise) (fn? (.-cancel promise))))
 
+(defn call-sideffect [sideffect ctrl app-db-atom]
+  (try
+    {:value (call! sideffect ctrl app-db-atom)
+     :error? false}
+    (catch :default err
+      {:value err
+       :error? true})))
+
 (defn ^:private run-pipeline [pipeline ctrl app-db-atom value]
   (let [{:keys [begin rescue]} pipeline
         current-promise (atom nil)
@@ -187,31 +195,38 @@ Runs multiple sideffects sequentially:
                ;;(when repr (println "ENDING" repr))
                (when (and promise? sideffect?)
                  (throw (ex-info (:async-sideffect pipeline-errors) {:type ::pipeline-error})))
-               (when sideffect?
-                 (let [sideffect-value (call! resolved-value ctrl app-db-atom)]
-                   (when (is-promise? sideffect-value)
-                     (<! (promise->chan sideffect-value)))))
-               (cond
-                 (= ::break resolved-value)
-                 (resolve ::break)
+               (if sideffect?
+                 (let [{:keys [value error?]} (call-sideffect resolved-value ctrl app-db-atom)
+                       resolved-value (if (is-promise? value) (<! (promise->chan value)) value)]
+                   (cond
+                     (and error? (= block :begin))
+                     (if (seq rescue)
+                       (recur :rescue rescue prev-value value)
+                       (reject value))
+                     
+                     (and error? (= block :rescue))
+                     (reject value)
+                     
+                     :else
+                     (recur block (rest actions) prev-value error)))
+                 (cond 
+                   (= ::break resolved-value)
+                   (resolve ::break)
 
-                 (and error? (= block :begin))
-                 (if (seq rescue)
-                   (recur :rescue rescue prev-value resolved-value)
-                   (reject resolved-value))
+                   (and error? (= block :begin))
+                   (if (seq rescue)
+                     (recur :rescue rescue prev-value resolved-value)
+                     (reject resolved-value))
 
-                 (and error? (= block :rescue)
-                      (not= error resolved-value))
-                 (reject error)
+                   (and error? (= block :rescue)
+                        (not= error resolved-value))
+                   (reject error)
 
-                 sideffect?
-                 (recur block (rest actions) prev-value error)
-
-                 :else
-                 (recur block
-                        (rest actions)
-                        (if (nil? resolved-value) prev-value resolved-value)
-                        error))))))))))
+                   :else
+                   (recur block
+                          (rest actions)
+                          (if (nil? resolved-value) prev-value resolved-value)
+                          error)))))))))))
 
 (defn ^:private make-pipeline [pipeline]
   (with-meta (partial run-pipeline pipeline) {:pipeline? true}))
