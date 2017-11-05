@@ -18,6 +18,9 @@
       (pp/send-command! [dataloader/id-key :waits] wait-chan)
       (chan->promise wait-chan value))))
 
+(defn run-dataloader! []
+  (pp/send-command! [dataloader/id-key :load-data] nil))
+
 (defrecord Controller [dataloader])
 
 (defmethod controller/params Controller [this route-params]
