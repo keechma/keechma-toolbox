@@ -1,4 +1,4 @@
-(defproject keechma/toolbox "0.1.4"
+(defproject keechma/toolbox "0.1.5"
   :description "Keechma Toolbox"
   :dependencies [[org.clojure/clojure "1.9.0-alpha17"]
                  [org.clojure/clojurescript "1.9.854"]
@@ -11,7 +11,7 @@
                  [medley "0.8.4"]
                  [cljs-ajax "0.5.8"]
                  [com.stuartsierra/dependency "0.2.0"]
-                 [keechma/entitydb "0.1.0"]]
+                 [keechma/entitydb "0.1.3"]]
 
   :min-lein-version "2.5.3"
 
