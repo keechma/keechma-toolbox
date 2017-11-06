@@ -14,6 +14,8 @@
          :remove-meta
          :remove-named-item
          :remove-collection
+         :empty-collection
+         :remove-related-collection
          :vacuum]
         mutate-with-schema-fns
         [:insert-item
@@ -21,7 +23,10 @@
          :insert-collection
          :append-collection
          :prepend-collection
-         :remove-item]]
+         :remove-item
+         :insert-related-collection
+         :append-related-collection
+         :prepend-related-collection]]
     `(do
        ~@(for [fn-name getter-ensure-layout-fns]
            (let [db-sym (gensym "db")
