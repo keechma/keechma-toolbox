@@ -413,3 +413,28 @@
                 (p/map (fn []
                          (is (= {:source :context} (:foo @app-db-atom)))
                          (done)))))))
+
+(defn make-datasource-that-tracks-calls [tracking-atom]
+  {:user {:loader (fn [reqs]
+                    (map (fn [r]
+                           (when-let [params (:params r)]
+                             (swap! tracking-atom inc)
+                             (p/promise (fn [resolve reject]
+                                          (js/setTimeout #(resolve {:some :data}) 10)))))
+                         reqs))
+          :params (fn [_ _ _]
+                    {:some :params})
+          :target [:user]}})
+
+
+(deftest calling-dataloader-twice-shouldnt-make-duplicate-requests
+  (let [tracking-atom (atom 0)
+        app-db-atom (atom {:route {:data {}}})
+        dataloader (core/make-dataloader (make-datasource-that-tracks-calls tracking-atom))]
+    (dataloader app-db-atom)
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (is (= {:some :data} (:user @app-db-atom)))
+                         (is (= 1 @tracking-atom))
+                         (done)))))))

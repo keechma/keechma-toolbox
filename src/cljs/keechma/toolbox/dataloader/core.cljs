@@ -2,10 +2,13 @@
   (:require [com.stuartsierra.dependency :as dep]
             [cljs.core.async :refer [<! chan put!]]
             [promesa.core :as p]
-            [entitydb.core :as edb])
+            [entitydb.core :as edb]
+            [medley.core :refer [dissoc-in]])
   (:require-macros [cljs.core.async.macros :refer [go-loop]]))
 
 (def id-key ::dataloader)
+
+(def request-cache (atom {}))
 
 (defrecord EntityDBWithRelations [data relations])
 
@@ -82,6 +85,7 @@
       :edb/collection (get-edb-collection app-db edb-schema (last target))
       (get-kv-data app-db target))))
 
+
 (defn datasources->loaders [app-datasources datasources app-db results-chan edb-schema]
   (let [route-params (get-in app-db [:route :data])]
     (loop [ds datasources
@@ -107,22 +111,35 @@
                                  :prev prev
                                  :datasource key
                                  :app-db app-db
-                                 :target target})))))))))
+                                 :target target
+                                 :current-request (get-in @request-cache [loader params])})))))))))
+
+
+
+(defn call-loader [loader pending-datasources context]
+  (let [reqs (loader pending-datasources context)]
+    (doseq [[idx req] (map-indexed vector reqs)]
+      (swap! request-cache assoc-in [loader (get-in pending-datasources [idx :params])] req))
+    reqs))
 
 (defn start-loaders! [app-db-atom app-datasources datasources results-chan edb-schema context]
   (let [app-db @app-db-atom
         loaders (datasources->loaders app-datasources datasources app-db results-chan edb-schema)]
     (doseq [[loader pending-datasources] loaders]
-      (let [promises (loader pending-datasources context)]
-        (doseq [[idx loader-promise] (map-indexed vector promises)]
+      (let [pending-datasources-with-current (vec (filter #(not (nil? (:current-request %))) pending-datasources))
+            pending-datasources-without-current (vec (filter #(nil? (:current-request %)) pending-datasources))
+            promises (call-loader loader pending-datasources-without-current context)]
+        (doseq [[idx loader-promise] (map-indexed vector (concat promises (map :current-request pending-datasources-with-current)))]
           (->> (p/promise loader-promise)
                (p/map (fn [value]
                         (let [pending-datasource (get pending-datasources idx)
                               processor (or (get-in datasources [(:datasource pending-datasource) :processor]) identity)]
+                          (swap! request-cache dissoc-in [loader (:params pending-datasource)])
                           (put! results-chan [:ok (assoc pending-datasource
                                                          :value (processor value pending-datasource))]))))
                (p/error (fn [error]
                           (let [pending-datasource (get pending-datasources idx)]                            
+                            (swap! request-cache dissoc-in [loader (:params pending-datasource)])
                             (put! results-chan [:error (assoc pending-datasource :error error)]))))))))))
 
 (defn has-pending-datasources? [app-db]
@@ -227,6 +244,7 @@
                                        new-datasource-params)
                                     (= ::ignore new-datasource-params))
                                 (= :completed (:status datasource-meta)))))]
+
         (recur (assoc datasources-plan datasource-key
                       {:deps-fulfilled? datasource-deps-fulfilled?
                        :reload? reload?})
@@ -253,7 +271,8 @@
 
             (when (fn? on-cancel) (on-cancel #(swap! running? not)))
 
-            (mark-pending! app-db-atom  edb-schema (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
+ 
+            (mark-pending! app-db-atom edb-schema (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
             (start-loaders! app-db-atom datasources (select-keys datasources start-nodes) results-chan edb-schema context)
             (go-loop []
               (if @running?

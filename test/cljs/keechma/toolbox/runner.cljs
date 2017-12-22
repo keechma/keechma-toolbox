@@ -8,5 +8,4 @@
 (doo-tests 'keechma.toolbox.dataloader-test
            'keechma.toolbox.pipeline-test
            'keechma.toolbox.css-test
-           'keechma.toolbox.forms-test
-           )
+           'keechma.toolbox.forms-test)
