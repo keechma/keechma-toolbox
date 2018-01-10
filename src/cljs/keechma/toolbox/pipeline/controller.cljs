@@ -1,25 +1,71 @@
 (ns keechma.toolbox.pipeline.controller
   (:require [keechma.controller :as controller]
             [cljs.core.async :refer [<!]]
-            [keechma.toolbox.pipeline.core :refer [run-pipeline]])
+            [keechma.toolbox.pipeline.core :refer [run-pipeline]]
+            [clojure.set :as set])
   (:require-macros [cljs.core.async.macros :refer [go-loop]]))
 
-(defrecord PipelineController [params-fn pipelines])
+(def pipeline-rename-map {:start         :on-start
+                          :stop          :on-stop
+                          :route-changed :on-route-changed})
+
+(defrecord PipelineController [controller-api pipelines])
 
 (defmethod controller/params PipelineController [this route-params]
-  ((:params-fn this) route-params))
+  (let [params-fn (get-in this [:controller-api :params])]
+    (params-fn route-params)))
 (defmethod controller/start PipelineController [this params app-db]
-  (controller/execute this :start params)
-  app-db)
+  (let [start-fn (get-in this [:controller-api :start])]
+    (controller/execute this :start params)
+    (start-fn this params app-db)))
 (defmethod controller/stop PipelineController [this params app-db]
-  (controller/execute this :stop params)
-  app-db)
+  (let [stop-fn (get-in this [:controller-api :stop])]
+    (controller/execute this :stop params)
+    (stop-fn this params app-db)))
 (defmethod controller/handler PipelineController [this app-db-atom in-chan _]
   (go-loop []
-    (let [[command args] (<! in-chan)]
-      (when-let [pipeline (get-in this [:pipelines command])]
+    (let [[command args] (<! in-chan)
+          pipeline-name (or (get pipeline-rename-map command) command)]
+      (when-let [pipeline (get-in this [:pipelines pipeline-name])]
         (pipeline this app-db-atom args))
       (when command (recur)))))
+
+(def default-start-stop (fn [this params app-db] app-db))
+(def default-params (fn [route-params] nil))
+
+(defn prepare-controller-api [controller-api]
+  (merge {:stop   default-start-stop 
+          :start  default-start-stop 
+          :params default-params}
+         (if (fn? controller-api)
+           {:params controller-api}
+           controller-api)))
+
+
+(defn redundant-pipeline-message [pipeline]
+  (str "You can't have `:" pipeline "` "
+       "and `:on-" pipeline "` "
+       "pipeline defined. Use `:on-" pipeline "`, `:" pipeline "` is deprecated."))
+
+(defn prepare-pipelines [pipelines]
+  (when (and (:stop pipelines)
+             (:on-stop pipelines))
+    (throw (redundant-pipeline-message "stop") {}))
+  (when (and (:start pipelines)
+             (:on-start pipelines))
+    (throw (redundant-pipeline-message "start") {}))
+  (when (and (:route-changed pipelines)
+             (:on-route-changed pipelines))
+    (throw (redundant-pipeline-message "route-changed") {}))
+  (set/rename-keys pipelines {:stop          :on-stop
+                              :start         :on-start
+                              :route-changed :on-route-changed}))
+
+
+
+(defn make-constructor [controller-api pipelines]
+  (fn []
+    (->PipelineController (prepare-controller-api controller-api) (prepare-pipelines pipelines))))
 
 
 (defn constructor
@@ -123,5 +169,6 @@ Here's how you would implement this feature:
                    (println \"SEARCH RESULTS:\" value)))))}))
 ```
   "
-  [params-fn pipelines]
-  (->PipelineController params-fn pipelines))
+  [controller-api pipelines]
+  (let [c (make-constructor controller-api pipelines)]
+    (c)))

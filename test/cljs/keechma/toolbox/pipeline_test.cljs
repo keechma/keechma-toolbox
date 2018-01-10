@@ -194,3 +194,37 @@
                     :components  app-components
                     :html-element target-el}]
            (app-state/start! app))))
+
+
+(defn pipelines-new-api [done]
+  (pp-controller/constructor
+   {:params (fn [route-params]
+              (when (get-in route-params [:data :new-api])
+                true))
+    :start (fn [_ _ app-db]
+             (assoc-in app-db [:kv :log] [:start]))
+    :stop (fn [_ _ app-db]
+            (update-in app-db [:kv :log] #(conj % :stop)))}
+   {:on-start (pipeline! [value app-db]
+                (pp/commit! (update-in app-db [:kv :log] #(conj % :on-start))))
+    :on-stop (pipeline! [value app-db]
+               (pp/commit! (update-in app-db [:kv :log] #(conj % :on-stop)))
+               (is (= (get-in app-db [:kv :log])
+                      [:start :on-start :on-route-changed :stop :on-stop]))
+               (done)
+               (rescue! [error]
+                 (is false)
+                 (done)))
+    :on-route-changed (pipeline! [value app-db]
+                        (pp/commit! (update-in app-db [:kv :log] #(conj % :on-route-changed))))}))
+
+(deftest pipelines-new-api-test
+  (async done
+         (set! (.-hash js/location) "#!?new-api=1")
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:basic (pipelines-new-api done)}
+                    :components app-components
+                    :html-element target-el}]
+           (app-state/start! app)
+           (js/setTimeout #(set! (.-hash js/location) "#!?new-api=2") 10)
+           (js/setTimeout #(set! (.-hash js/location) "") 20))))
