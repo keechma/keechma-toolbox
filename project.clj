@@ -1,17 +1,17 @@
-(defproject keechma/toolbox "0.1.6"
+(defproject keechma/toolbox "0.1.7"
   :description "Keechma Toolbox"
   :dependencies [[org.clojure/clojure "1.9.0-alpha17"]
                  [org.clojure/clojurescript "1.9.854"]
-                 [reagent "0.6.0"]
+                 [reagent "0.7.0"]
                  [binaryage/devtools "0.8.2"]
-                 [keechma "0.3.0" :exclusions [cljsjs/react-with-addons]]
+                 [keechma "0.3.1" :exclusions [cljsjs/react-with-addons]]
                  [garden "1.3.2"]
                  [funcool/promesa "1.8.1"]
                  [keechma/forms "0.1.2"]
                  [medley "0.8.4"]
                  [cljs-ajax "0.5.8"]
                  [com.stuartsierra/dependency "0.2.0"]
-                 [keechma/entitydb "0.1.3"]]
+                 [keechma/entitydb "0.1.4"]]
 
   :min-lein-version "2.5.3"
 
