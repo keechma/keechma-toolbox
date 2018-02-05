@@ -2,8 +2,7 @@
   (:require [cljs.core.async :refer [<! put! take! chan close! timeout]]
             [medley.core :refer [dissoc-in]]
             [promesa.core :as p]
-            [keechma.toolbox.pipeline.core :as pp]
-            [oops.core :refer [ocall]])
+            [keechma.toolbox.pipeline.core :as pp])
   (:import [goog.async AnimationDelay Throttle])
   (:require-macros [cljs.core.async.macros :refer [go-loop]]))
 
@@ -36,9 +35,7 @@
   (let [current (get-in app-db [:kv ::tasks id])
         version (:version current)
         stopper (get-in current [:stoppers version])]
-    (if stopper
-      (stopper app-db state)
-      app-db)))
+    (dissoc-in (if stopper (stopper app-db state) app-db) [:kv ::tasks id])))
 
 (defn make-app-db-watcher [app-db-atom watcher-id]
   (fn [cb]
