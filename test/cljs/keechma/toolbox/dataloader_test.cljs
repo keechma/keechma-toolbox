@@ -409,7 +409,7 @@
         app-db-atom (atom {:route {:data {}}})
         dataloader (core/make-dataloader datasources-with-context-loader)]
     (async done
-           (->> (dataloader app-db-atom context)
+           (->> (dataloader app-db-atom {:context context})
                 (p/map (fn []
                          (is (= {:source :context} (:foo @app-db-atom)))
                          (done)))))))
@@ -437,4 +437,37 @@
                 (p/map (fn []
                          (is (= {:some :data} (:user @app-db-atom)))
                          (is (= 1 @tracking-atom))
+                         (done)))))))
+
+(defn make-inc-datasources []
+  (let [counter (atom 0)]
+    {:counter {:target [:kv :counter]
+               :params (fn [_ _ _])
+               :loader (fn [reqs]
+                         (map (fn [r]
+                                (swap! counter inc)
+                                @counter)
+                              reqs))}
+     :rel-counter {:target [:kv :rel-counter]
+                   :deps [:counter]
+                   :params (fn [_ _ {:keys [counter]}]
+                             counter)
+                   :loader (fn [reqs]
+                             (map (fn [r]
+                                    (inc (:params r)))
+                                  reqs))}}))
+
+(deftest manual-datasource-invalidation
+  (let [app-db-atom (atom {:route {:data {}}})
+        datasources (make-inc-datasources)
+        dataloader (core/make-dataloader datasources)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (is (= 1 (get-in @app-db-atom [:kv :counter])))
+                         (is (= 2 (get-in @app-db-atom [:kv :rel-counter])))
+                         (dataloader app-db-atom {:invalid-datasources #{:counter}})))
+                (p/map (fn []
+                         (is (= 2 (get-in @app-db-atom [:kv :counter])))
+                         (is (= 3 (get-in @app-db-atom [:kv :rel-counter])))
                          (done)))))))

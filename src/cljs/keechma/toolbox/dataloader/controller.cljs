@@ -15,8 +15,10 @@
    (fn [app-db]
      (= :loaded (get-in app-db dataloader-status-key)))))
 
-(defn run-dataloader! []
-  (pp/send-command! [dataloader/id-key :load-data] nil))
+(defn run-dataloader!
+  ([] (run-dataloader! nil))
+  ([invalid-datasources]
+   (pp/send-command! [dataloader/id-key :load-data] invalid-datasources)))
 
 (defn broadcast [controller app-db command payload]
   (let [running-controllers-keys (keys (get-in app-db [:internal :running-controllers]))]
@@ -36,21 +38,22 @@
   (let [d (:dataloader this)
         context (controller/context this)
         call-dataloader
-        (fn []
+        (fn [invalid-datasources]
           (swap! app-db-atom assoc-in dataloader-status-key :pending)
           (broadcast this @app-db-atom ::status-change :pending)
-          (->> (d app-db-atom context)
+          (->> (d app-db-atom {:context context
+                               :invalid-datasources (set invalid-datasources)})
                (p/map (fn []
                         (swap! app-db-atom assoc-in dataloader-status-key :loaded)
                         (broadcast this @app-db-atom ::status-change :loaded)))))]
 
-    (call-dataloader)
+    (call-dataloader nil)
 
     (go-loop []
       (let [[command args] (<! in-chan)]
         (when command
           (case command
-            :load-data (call-dataloader))
+            :load-data (call-dataloader args))
           (recur))))))
 
 

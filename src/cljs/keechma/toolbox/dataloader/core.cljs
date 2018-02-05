@@ -229,7 +229,7 @@
                    (not (:reload? dep)))))
           true (:deps datasource)))
 
-(defn datasources-load-plan [app-db datasources datasources-order edb-schema]
+(defn datasources-load-plan [app-db datasources datasources-order edb-schema invalid-datasources]
   (loop [datasources-plan {}
          datasources-order datasources-order]
     (if (seq datasources-order)
@@ -238,7 +238,8 @@
             datasource-meta (get-meta app-db datasource-key)
             datasource-deps-fulfilled? (deps-fulfilled? app-db datasources-plan datasource)
             new-datasource-params (datasource-params datasources datasource-key datasource app-db edb-schema)
-            reload? (if (not datasource-deps-fulfilled?)
+            reload? (if (or (not datasource-deps-fulfilled?)
+                            (contains? invalid-datasources datasource-key))
                       true
                       (not (and (or (= (:params datasource-meta)
                                        new-datasource-params)
@@ -260,18 +261,18 @@
                 (reduce #(dep/depend %1 key %2) acc deps)))
             (dep/graph) datasources)
          g-nodes (dep/nodes g)
-         independent (filter #(not (contains? g-nodes %)) (keys datasources))]
-     (fn [app-db-atom context]
+         independent (filter #(not (contains? g-nodes %)) (keys datasources))
+         datasources-order (concat independent (dep/topo-sort g))]
+     (fn [app-db-atom {:keys [context invalid-datasources]}]
        (p/promise
         (fn [resolve reject on-cancel]
           (let [running? (atom true) 
                 results-chan (chan)
-                plan (datasources-load-plan @app-db-atom datasources (concat independent (dep/topo-sort g)) edb-schema)
+                plan (datasources-load-plan @app-db-atom datasources datasources-order edb-schema invalid-datasources)
                 start-nodes (filter #(and (:reload? (get plan %)) (:deps-fulfilled? (get plan %))) (keys plan))]
 
             (when (fn? on-cancel) (on-cancel #(swap! running? not)))
 
- 
             (mark-pending! app-db-atom edb-schema (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
             (start-loaders! app-db-atom datasources (select-keys datasources start-nodes) results-chan edb-schema context)
             (go-loop []
