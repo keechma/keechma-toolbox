@@ -291,4 +291,4 @@
                       nil)
                     (recur))
                   (resolve @app-db-atom))
-                (reject (js/Error. "Dataloader Rejected")))))))))))
+                (reject (ex-info "Dataloader Rejected." {})))))))))))
