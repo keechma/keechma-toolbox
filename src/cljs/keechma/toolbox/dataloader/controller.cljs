@@ -3,23 +3,28 @@
             [cljs.core.async :refer [<! close! put! chan]]
             [keechma.toolbox.dataloader.core :as dataloader]
             [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline!]]
-            [promesa.core :as p])
+            [promesa.core :as p]
+            [keechma.toolbox.tasks :refer [block-until!]])
   (:require-macros [cljs.core.async.macros :refer [go-loop go]]))
 
-(defn ^:private chan->promise [wait-chan value]
-  (p/promise (fn [resolve reject]
-               (go
-                 (<! wait-chan)
-                 (resolve)))))
+(def dataloader-status-key [:kv ::status])
 
 (defn wait-dataloader-pipeline! []
-  (let [wait-chan (chan)]
-    (pipeline! [value app-db]
-      (pp/send-command! [dataloader/id-key :waits] wait-chan)
-      (chan->promise wait-chan value))))
+  (block-until!
+   [dataloader/id-key (gensym :dataloader)]
+   (fn [app-db]
+     (= :loaded (get-in app-db dataloader-status-key)))))
 
-(defn run-dataloader! []
-  (pp/send-command! [dataloader/id-key :load-data] nil))
+(defn run-dataloader!
+  ([] (run-dataloader! nil))
+  ([invalid-datasources]
+   (pp/send-command! [dataloader/id-key :load-data] invalid-datasources)))
+
+(defn broadcast [controller app-db command payload]
+  (let [running-controllers-keys (keys (get-in app-db [:internal :running-controllers]))]
+    (doseq [c running-controllers-keys]
+      (when (not= c dataloader/id-key)
+        (controller/send-command controller [c command] payload)))))
 
 (defrecord Controller [dataloader])
 
@@ -27,22 +32,30 @@
   (:data route-params))
 
 (defmethod controller/start Controller [this route-params app-db]
-  (controller/execute this :load-data)
-  app-db)
+  (assoc-in app-db dataloader-status-key :pending))
 
 (defmethod controller/handler Controller [this app-db-atom in-chan out-chan]
-  (go-loop [waits []]
-    (let [[command args] (<! in-chan)]
-      (when command
-        (case command
-          :load-data (do (->> ((:dataloader this) app-db-atom (controller/context this))
-                              (p/map #(controller/execute this :loaded-data)))
-                         (recur waits))
-          :loaded-data (do
-                         (doseq [c waits] (close! c))
-                         (recur []))
-          :waits (recur (conj waits args))
-          (recur waits))))))
+  (let [d (:dataloader this)
+        context (controller/context this)
+        call-dataloader
+        (fn [invalid-datasources]
+          (swap! app-db-atom assoc-in dataloader-status-key :pending)
+          (broadcast this @app-db-atom ::status-change :pending)
+          (->> (d app-db-atom {:context context
+                               :invalid-datasources (set invalid-datasources)})
+               (p/map (fn []
+                        (swap! app-db-atom assoc-in dataloader-status-key :loaded)
+                        (broadcast this @app-db-atom ::status-change :loaded)))))]
+
+    (call-dataloader nil)
+
+    (go-loop []
+      (let [[command args] (<! in-chan)]
+        (when command
+          (case command
+            :load-data (call-dataloader args))
+          (recur))))))
+
 
 (defn constructor
   "Dataloader controller constructor"
@@ -187,6 +200,22 @@ In some cases you will want to manually trigger the dataloader without the route
 ```
 
 This will reload all invalidated datasources.
+
+**Keeping track of dataloader status from a different controller
+
+Sometimes it's valuable to know when the dataloader is done with loading. There are two ways to get this info, and they depend on the flavor of your controller.
+
+If you're using pipelines (and `keechma.toolbox.pipeline.controller`) you can use the built in `keechma.toolbox.dataloader.controller/wait-dataloader-pipeline!` function which will block the pipeline until the dataloader is finished with loading.
+
+```clojure
+(pipeline! [value app-db]
+  (keechma.toolbox.dataloader.controller/wait-dataloader-pipeline!)
+  (some-fn)
+```
+
+In this case `some-fn` will be called after the dataloader is done.
+
+If you're using a normal controller API (where you implement the `handler` function), you can listen for the `:keechma.toolbox.dataloader.controller/status-change` command. This command will be sent with `:pending` or `:loaded` as payload - depending on the dataloader's status.
 "
 
   ([datasources edb-schema] (register {} datasources edb-schema))

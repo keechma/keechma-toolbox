@@ -130,26 +130,29 @@
            (->> (dataloader app-db-atom)
                 (p/map (fn []
                          (is (= @app-db-atom
-                                {:kv
-                                 {:keechma.toolbox.dataloader.core/dataloader
-                                  {:current-user {:params nil, :status :error, :prev nil, :error error-404}
-                                   :current-user-favorites
-                                   {:params nil, :status :error, :prev nil, :error error-404}
-                                   :jwt
-                                   {:meta {}
-                                    :params nil
-                                    :status :completed
-                                    :prev
-                                    {:meta {:status :pending, :prev {:value nil}}
-                                     :value nil
-                                     :params nil
-                                     :status nil
-                                     :error nil
-                                     :data nil}
-                                    :error nil}}
-                                  :favorites {:current nil}
-                                  :jwt "JWT!"
-                                  :user {:current nil}}}))
+
+                                {:kv {:keechma.toolbox.dataloader.core/pending #{},
+                                      :keechma.toolbox.dataloader.core/dataloader 
+                                      {:jwt {:status :completed,
+                                             :params nil,
+                                             :error nil,
+                                             :meta {},
+                                             :prev {:status nil,
+                                                    :error nil,
+                                                    :params nil,
+                                                    :data nil}},
+                                       :current-user {:status :error,
+                                                      :prev nil,
+                                                      :meta {},
+                                                      :params nil,
+                                                      :error error-404},
+                                       :current-user-favorites {:status :error,
+                                                                :prev nil,
+                                                                :params nil,
+                                                                :error error-404}},
+                                      :jwt "JWT!",
+                                      :user {:current nil},
+                                      :favorites {:current nil}}}))
                          (done)))))))
 
 (deftest route-dependent-dataloader
@@ -171,73 +174,64 @@
            (->> (dataloader app-db-atom)
                 (p/map (fn []
                          (is (= @app-db-atom
-                                {:kv
-                                 {:keechma.toolbox.dataloader.core/dataloader
-                                  {:jwt
-                                   {:meta {}
-                                    :params "123"
-                                    :status :completed
-                                    :prev
-                                    {:meta {:status :pending, :prev {:value nil}}
-                                     :value nil
-                                     :params nil
-                                     :status nil
-                                     :error nil
-                                     :data nil}
-                                    :error nil}
-                                   :foo
-                                   {:meta {}
-                                    :params :bar
-                                    :status :completed
-                                    :prev
-                                    {:meta {:status :pending, :prev {:value nil}}
-                                     :value nil
-                                     :params nil
-                                     :status nil
-                                     :error nil
-                                     :data nil}
-                                    :error nil}}
-                                  :jwt "123"
-                                  :foo :bar}
-                                 :route {:data {:foo :bar}}}))
+                                {:route {:data {:foo :bar}},
+                                 :kv {:keechma.toolbox.dataloader.core/pending #{},
+                                      :keechma.toolbox.dataloader.core/dataloader
+                                      {:jwt {:status :completed,
+                                             :params "123",
+                                             :error nil,
+                                             :meta {},
+                                             :prev {:status nil,
+                                                    :error nil,
+                                                    :params nil,
+                                                    :data nil}},
+                                       :foo {:status :completed,
+                                             :params :bar,
+                                             :error nil,
+                                             :meta {},
+                                             :prev {:status nil,
+                                                    :error nil,
+                                                    :params nil,
+                                                    :data nil}}},
+                                      :jwt "123",
+                                      :foo :bar}}
+
+                                ))
                          (swap! app-db-atom assoc-in [:route :data :foo] :baz)
                          (dataloader app-db-atom)))
                 (p/map (fn []
-
                          
                          (is (= @app-db-atom
-                                {:kv
-                                 {:keechma.toolbox.dataloader.core/dataloader
-                                  {:jwt
-                                   {:meta {}
-                                    :params "123"
-                                    :status :completed
-                                    :prev
-                                    {:meta {:status :pending, :prev {:value nil}}
-                                     :value nil
-                                     :params nil
-                                     :status nil
-                                     :error nil
-                                     :data nil}
-                                    :error nil}
-                                   :foo
-                                   {:meta {}
-                                    :params :baz
-                                    :status :completed
-                                    :prev
-                                    {:meta
-                                     {:status :pending
-                                      :prev
-                                      {:meta {}, :value :bar, :params :bar, :status :completed, :error nil}}
-                                     :value nil
-                                     :params nil
-                                     :status nil
-                                     :error nil
-                                     :data :bar}
-                                    :error nil}}
-                                  :jwt "123"
-                                  :foo :baz}
-                                 :route {:data {:foo :baz}}}))
+                                {:route {:data {:foo :baz}},
+                                 :kv {:keechma.toolbox.dataloader.core/pending #{},
+                                      :keechma.toolbox.dataloader.core/dataloader 
+                                      {:jwt {:status :completed,
+                                             :params "123",
+                                             :error nil,
+                                             :meta {},
+                                             :prev {:status nil,
+                                                    :error nil,
+                                                    :params nil,
+                                                    :data nil}},
+                                       :foo {:status :completed,
+                                             :params :baz,
+                                             :error nil,
+                                             :meta {},
+                                             :prev {:status nil,
+                                                    :error nil,
+                                                    :params nil,
+                                                    :data :bar,
+                                                    :meta {:status :completed,
+                                                           :params :bar,
+                                                           :error nil,
+                                                           :meta {}}}}},
+                                      :jwt "123",
+                                      :foo :baz}}
+
+
+                                
+
+                                ))
                          (dataloader app-db-atom)))
                 (p/map (fn []   
                          (= @call-counter 3)
@@ -409,7 +403,7 @@
         app-db-atom (atom {:route {:data {}}})
         dataloader (core/make-dataloader datasources-with-context-loader)]
     (async done
-           (->> (dataloader app-db-atom context)
+           (->> (dataloader app-db-atom {:context context})
                 (p/map (fn []
                          (is (= {:source :context} (:foo @app-db-atom)))
                          (done)))))))
@@ -437,4 +431,93 @@
                 (p/map (fn []
                          (is (= {:some :data} (:user @app-db-atom)))
                          (is (= 1 @tracking-atom))
+                         (done)))))))
+
+(defn make-inc-datasources []
+  (let [counter (atom 0)]
+    {:counter {:target [:kv :counter]
+               :params (fn [_ _ _])
+               :loader (fn [reqs]
+                         (map (fn [r]
+                                (swap! counter inc)
+                                @counter)
+                              reqs))}
+     :rel-counter {:target [:kv :rel-counter]
+                   :deps [:counter]
+                   :params (fn [_ _ {:keys [counter]}]
+                             counter)
+                   :loader (fn [reqs]
+                             (map (fn [r]
+                                    (inc (:params r)))
+                                  reqs))}}))
+
+(deftest manual-datasource-invalidation
+  (let [app-db-atom (atom {:route {:data {}}})
+        datasources (make-inc-datasources)
+        dataloader (core/make-dataloader datasources)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (is (= 1 (get-in @app-db-atom [:kv :counter])))
+                         (is (= 2 (get-in @app-db-atom [:kv :rel-counter])))
+                         (dataloader app-db-atom {:invalid-datasources #{:counter}})))
+                (p/map (fn []
+                         (is (= 2 (get-in @app-db-atom [:kv :counter])))
+                         (is (= 3 (get-in @app-db-atom [:kv :rel-counter])))
+                         (done)))))))
+
+(defn make-params-test-datasources [log]
+  {:counter {:target [:kv :counter]
+             :params (fn [prev _ _]
+                       (swap! log conj prev)
+                       (gensym "params"))
+             :loader (fn [reqs]
+                       (map (fn [r] 1) reqs))}})
+
+(deftest params-test
+  (let [app-db-atom (atom {:route {:data {}}})
+        log (atom [])
+        datasources (make-params-test-datasources log)
+        dataloader (core/make-dataloader datasources)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (doseq [l (partition 2 @log)]
+                           (is (apply = l)))
+                         (done)))))))
+
+
+(defn make-prev-validation-datasources [log]
+  (let [counter (atom 1)]
+    {:counter {:target [:kv :counter]
+               :params (fn [{:keys [data]} _ _]
+                         (swap! log conj data)
+                         (gensym "params"))
+               :loader (fn [reqs]
+                         (map (fn [r]
+                                (swap! counter inc)
+                                @counter)
+                              reqs))}}))
+
+(deftest prev-validation
+  (let [log (atom [])
+        app-db-atom (atom {:route {:data {}}})
+        datasources (make-prev-validation-datasources log)
+        dataloader (core/make-dataloader datasources)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (is (= [nil nil 2 2 3 3 4 4] @log))
                          (done)))))))

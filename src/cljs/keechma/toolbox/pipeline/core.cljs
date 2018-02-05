@@ -202,10 +202,10 @@ Runs multiple sideffects sequentially:
                      (and error? (= block :begin))
                      (if (seq rescue)
                        (recur :rescue rescue prev-value value)
-                       (reject value))
+                       (reject (or (:payload value) value)))
                      
                      (and error? (= block :rescue))
-                     (reject value)
+                     (reject (or (:payload value) value))
                      
                      :else
                      (recur block (rest actions) prev-value error)))
@@ -216,11 +216,11 @@ Runs multiple sideffects sequentially:
                    (and error? (= block :begin))
                    (if (seq rescue)
                      (recur :rescue rescue prev-value resolved-value)
-                     (reject resolved-value))
+                     (reject (or (:payload resolved-value) resolved-value)))
 
                    (and error? (= block :rescue)
                         (not= error resolved-value))
-                   (reject error)
+                   (reject (or (:payload error) error))
 
                    :else
                    (recur block

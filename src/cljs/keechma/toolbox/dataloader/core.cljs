@@ -3,7 +3,8 @@
             [cljs.core.async :refer [<! chan put!]]
             [promesa.core :as p]
             [entitydb.core :as edb]
-            [medley.core :refer [dissoc-in]])
+            [medley.core :refer [dissoc-in]]
+            [clojure.set :as set])
   (:require-macros [cljs.core.async.macros :refer [go-loop]]))
 
 (def id-key ::dataloader)
@@ -85,6 +86,24 @@
       :edb/collection (get-edb-collection app-db edb-schema (last target))
       (get-kv-data app-db target))))
 
+(defn remove-pending-datasource [app-db datasource-key]
+  (update-in app-db [:kv ::pending] #(disj % datasource-key)))
+
+(defn mark-pending! [app-db-atom edb-schema datasources] 
+  (swap! app-db-atom assoc-in [:kv ::pending] (set (keys datasources))))
+
+(defn get-meta-and-data [app-db edb-schema datasource-key target]
+  {:data (get-data app-db edb-schema target)
+   :meta (get-meta app-db datasource-key)})
+
+(defn datasource-params [datasources datasource-key datasource app-db edb-schema]
+  (let [params-fn (or (:params datasource) (fn [& args]))
+        prev (get-meta-and-data app-db edb-schema datasource-key (:target datasource))
+        route (get-in app-db [:route :data])
+        deps (reduce (fn [acc dep-key]
+                       (assoc acc dep-key (get-data app-db edb-schema (:target (get datasources dep-key)))))
+                     {} (:deps datasource))]
+    (params-fn prev route deps)))
 
 (defn datasources->loaders [app-datasources datasources app-db results-chan edb-schema]
   (let [route-params (get-in app-db [:route :data])]
@@ -93,16 +112,11 @@
       (if (not (seq ds))
         loaders
         (let [[key val] (first ds)
-              prev {:data (get-data app-db edb-schema (:target val))
-                    :meta (get-meta app-db key)}
-              params-fn (or (:params val) (fn [& args]))
-              deps (reduce
-                    (fn [acc dep-key]
-                      (let [dep (get app-datasources dep-key)]
-                        (assoc acc dep-key (get-data app-db edb-schema (:target dep))))) {} (:deps val))
-              params (params-fn prev route-params deps)
+              prev (get-meta-and-data app-db edb-schema key (:target val))
+              params (datasource-params app-datasources key val app-db edb-schema)
               loader (or (:loader val) identity)
               target (:target val)]
+          
           (let [current-loaders (or (get loaders loader) [])]
             (recur (rest ds)
                    (assoc loaders loader
@@ -114,8 +128,6 @@
                                  :target target
                                  :current-request (get-in @request-cache [loader params])})))))))))
 
-
-
 (defn call-loader [loader pending-datasources context]
   (let [reqs (loader pending-datasources context)]
     (doseq [[idx req] (map-indexed vector reqs)]
@@ -123,28 +135,31 @@
     reqs))
 
 (defn start-loaders! [app-db-atom app-datasources datasources results-chan edb-schema context]
-  (let [app-db @app-db-atom
-        loaders (datasources->loaders app-datasources datasources app-db results-chan edb-schema)]
+  (let [loaders (datasources->loaders app-datasources datasources @app-db-atom results-chan edb-schema)]
     (doseq [[loader pending-datasources] loaders]
       (let [pending-datasources-with-current (vec (filter #(not (nil? (:current-request %))) pending-datasources))
             pending-datasources-without-current (vec (filter #(nil? (:current-request %)) pending-datasources))
             promises (call-loader loader pending-datasources-without-current context)]
         (doseq [[idx loader-promise] (map-indexed vector (concat promises (map :current-request pending-datasources-with-current)))]
-          (->> (p/promise loader-promise)
-               (p/map (fn [value]
-                        (let [pending-datasource (get pending-datasources idx)
-                              processor (or (get-in datasources [(:datasource pending-datasource) :processor]) identity)]
-                          (swap! request-cache dissoc-in [loader (:params pending-datasource)])
-                          (put! results-chan [:ok (assoc pending-datasource
-                                                         :value (processor value pending-datasource))]))))
-               (p/error (fn [error]
-                          (let [pending-datasource (get pending-datasources idx)]                            
+          (let [pending-datasource (get pending-datasources idx)]
+
+            (swap! app-db-atom assoc-in [:kv id-key (:datasource pending-datasource) :status] :pending)
+
+            (->> (p/promise loader-promise)
+                 (p/map (fn [value]
+                          (let [processor (or (get-in datasources [(:datasource pending-datasource) :processor]) identity)]
                             (swap! request-cache dissoc-in [loader (:params pending-datasource)])
-                            (put! results-chan [:error (assoc pending-datasource :error error)]))))))))))
+                            (put! results-chan [:ok (assoc pending-datasource
+                                                           :value (processor value pending-datasource))]))))
+                 (p/error (fn [error]
+                            (let [pending-datasource (get pending-datasources idx)]                            
+                              (swap! request-cache dissoc-in [loader (:params pending-datasource)])
+                              (put! results-chan [:error (assoc pending-datasource :error error)])))))))))))
+
+
 
 (defn has-pending-datasources? [app-db]
-  (let [statuses (map (fn [[_ val]] (get val :status)) (get-in app-db [:kv id-key]))]
-    (boolean (some #(= :pending %) statuses))))
+  (not (empty? (get-in app-db [:kv ::pending]))))
 
 (defn store-datasource! [app-db-atom edb-schema payload]
   (let [app-db @app-db-atom
@@ -152,6 +167,8 @@
         value (:value payload)
         value-keys (if (map? value) (set (keys value)) #{})
         [res-data res-meta] (if (= #{:data :meta} value-keys) [(:data value) (:meta value)] [value {}])]
+   
+
     (reset! app-db-atom
             (-> app-db
                 (save-meta datasource-key
@@ -159,8 +176,9 @@
                             :params (:params payload)
                             :error nil
                             :meta res-meta
-                            :prev (merge {:value nil :status nil :error nil :params nil} (:prev payload))})
-                (save-data edb-schema (:target payload) res-data)))))
+                            :prev (merge {:status nil :error nil :params nil} (dissoc-in (:prev payload) [:meta :prev]))})
+                (save-data edb-schema (:target payload) res-data)
+                (remove-pending-datasource datasource-key)))))
 
 (defn start-dependent-loaders! [app-db-atom app-datasources datasources results-chan edb-schema context]
   (let [app-db @app-db-atom
@@ -169,8 +187,8 @@
                          {} (keys app-datasources))
         fulfilled  (reduce (fn [acc [datasource-key val]]
                              (if (and
-                                  (= :pending (:status (get-meta app-db datasource-key)))
-                                  (every? #(= :completed %) (vals (select-keys statuses (:deps val)))))
+                                  (contains? (get-in app-db [:kv ::pending]) datasource-key)
+                                  (empty? (set/intersection (get-in app-db [:kv ::pending]) (set (:deps val)))))
                                (assoc acc datasource-key val)
                                acc))
                            {} datasources)]
@@ -182,9 +200,11 @@
         (save-meta datasource-key
                    {:status :error
                     :prev nil
+                    :meta {}
                     :params (:params payload)
                     :error (:error payload)})
-        (save-data edb-schema (:target payload) nil))))
+        (save-data edb-schema (:target payload) nil)
+        (remove-pending-datasource datasource-key))))
 
 (defn mark-dependent-errors! [app-db app-datasources datasources edb-schema payload]
   (reduce (fn [acc [datasource-key val]]
@@ -194,32 +214,9 @@
                             :prev nil
                             :params nil
                             :error (:error payload)})
-                (save-data edb-schema (:target val) nil)))
+                (save-data edb-schema (:target val) nil)
+                (remove-pending-datasource datasource-key)))
           app-db datasources))
-
-(defn mark-pending! [app-db-atom edb-schema datasources]
-  (let [app-db @app-db-atom]
-    (reset! app-db-atom
-            (reduce
-             (fn [acc [datasource-key val]]
-               (let [prev-value (get-data acc edb-schema (:target val))
-                     prev-datasource (get-meta app-db datasource-key)]
-                 (save-meta acc datasource-key
-                            {:status :pending
-                             :prev (-> prev-datasource
-                                       (dissoc :prev)
-                                       (assoc :value prev-value))})))
-             app-db datasources))))
-
-(defn datasource-params [datasources datasource-key datasource app-db edb-schema]
-  (let [params-fn (or (:params datasource) (fn [& args]))
-        prev {:meta (get-meta app-db datasource-key)
-              :data (get-data app-db edb-schema (:target datasource))}
-        route (get-in app-db [:route :data])
-        deps (reduce (fn [acc dep-key]
-                       (assoc acc dep-key (get-data app-db edb-schema (:target (get datasources dep-key)) )))
-                     {} (:deps datasource))]
-    (params-fn prev route deps)))
 
 (defn deps-fulfilled? [app-db datasources-plan datasource]
   (reduce (fn [fulfilled? dep-key]
@@ -229,7 +226,7 @@
                    (not (:reload? dep)))))
           true (:deps datasource)))
 
-(defn datasources-load-plan [app-db datasources datasources-order edb-schema]
+(defn datasources-load-plan [app-db datasources datasources-order edb-schema invalid-datasources]
   (loop [datasources-plan {}
          datasources-order datasources-order]
     (if (seq datasources-order)
@@ -238,7 +235,9 @@
             datasource-meta (get-meta app-db datasource-key)
             datasource-deps-fulfilled? (deps-fulfilled? app-db datasources-plan datasource)
             new-datasource-params (datasource-params datasources datasource-key datasource app-db edb-schema)
-            reload? (if (not datasource-deps-fulfilled?)
+            ;; reload? should be refactored as it's not completely clear what's going on
+            reload? (if (or (not datasource-deps-fulfilled?)
+                            (contains? invalid-datasources datasource-key))
                       true
                       (not (and (or (= (:params datasource-meta)
                                        new-datasource-params)
@@ -260,35 +259,39 @@
                 (reduce #(dep/depend %1 key %2) acc deps)))
             (dep/graph) datasources)
          g-nodes (dep/nodes g)
-         independent (filter #(not (contains? g-nodes %)) (keys datasources))]
-     (fn [app-db-atom context]
-       (p/promise
-        (fn [resolve reject on-cancel]
-          (let [running? (atom true) 
-                results-chan (chan)
-                plan (datasources-load-plan @app-db-atom datasources (concat independent (dep/topo-sort g)) edb-schema)
-                start-nodes (filter #(and (:reload? (get plan %)) (:deps-fulfilled? (get plan %))) (keys plan))]
+         independent (filter #(not (contains? g-nodes %)) (keys datasources))
+         datasources-order (concat independent (dep/topo-sort g))
+         active-dataloader-id-atom (atom nil)]
+     (fn [app-db-atom {:keys [context invalid-datasources]}]
+       (let [dataloader-id (gensym :dataloader)]
+         (reset! active-dataloader-id-atom dataloader-id)
+         (p/promise
+          (fn [resolve reject on-cancel]
+            (let [running? (atom true) 
+                  results-chan (chan)
+                  plan (datasources-load-plan @app-db-atom datasources datasources-order edb-schema invalid-datasources)
+                  start-nodes (filter #(and (:reload? (get plan %)) (:deps-fulfilled? (get plan %))) (keys plan))]
 
-            (when (fn? on-cancel) (on-cancel #(swap! running? not)))
+              (when (fn? on-cancel) (on-cancel #(swap! running? not)))
 
- 
-            (mark-pending! app-db-atom edb-schema (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
-            (start-loaders! app-db-atom datasources (select-keys datasources start-nodes) results-chan edb-schema context)
-            (go-loop []
-              (if @running?
-                (if (has-pending-datasources? @app-db-atom)
-                  (let [[status payload] (<! results-chan)
-                        t-dependents (dep/transitive-dependents g (:datasource payload))]
-                    (case status
-                      :ok (do
-                            (store-datasource! app-db-atom edb-schema payload)
-                            (start-dependent-loaders! app-db-atom datasources (select-keys datasources t-dependents) results-chan edb-schema context))
-                      :error (reset! app-db-atom
-                                     (-> @app-db-atom
-                                         (store-datasource-error! edb-schema payload)
-                                         (mark-dependent-errors!
-                                          datasources (select-keys datasources t-dependents) edb-schema payload)))
-                      nil)
-                    (recur))
-                  (resolve @app-db-atom))
-                (reject (js/Error. "Dataloader Rejected")))))))))))
+              (mark-pending! app-db-atom edb-schema (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
+              (start-loaders! app-db-atom datasources (select-keys datasources start-nodes) results-chan edb-schema context)
+
+              (go-loop []
+                (if (and @running? (= dataloader-id @active-dataloader-id-atom))
+                  (if (has-pending-datasources? @app-db-atom)
+                    (let [[status payload] (<! results-chan)
+                          t-dependents (dep/transitive-dependents g (:datasource payload))]
+                      (case status
+                        :ok (do
+                              (store-datasource! app-db-atom edb-schema payload)
+                              (start-dependent-loaders! app-db-atom datasources (select-keys datasources t-dependents) results-chan edb-schema context))
+                        :error (reset! app-db-atom
+                                       (-> @app-db-atom
+                                           (store-datasource-error! edb-schema payload)
+                                           (mark-dependent-errors!
+                                            datasources (select-keys datasources t-dependents) edb-schema payload)))
+                        nil)
+                      (recur))
+                    (resolve @app-db-atom))
+                  (resolve @app-db-atom)))))))))))
