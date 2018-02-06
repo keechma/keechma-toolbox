@@ -521,3 +521,82 @@
                 (p/map (fn []
                          (is (= [nil nil 2 2 3 3 4 4] @log))
                          (done)))))))
+
+(defn make-infinite-pagination-datasources []
+  (let [users-list (vec (map (fn [i] {:id i}) (range 1 11)))]
+    {:users {:target [:kv :users]
+             :loader (fn [reqs]
+                       (map (fn [r]
+                              (let [offset (get-in r [:params :offset])]
+                                (subvec users-list offset (+ offset 2))))
+                            reqs))
+             :processor (fn [data req]
+                          (let [prev-data (or (get-in req [:prev :data]) [])
+                                params (:params req)
+                                prev-params (or (get-in req [:prev :meta :params]) {})]
+
+                            (if (= (dissoc params :offset)
+                                   (dissoc prev-params :offset))
+                              (concat prev-data data)
+                              data)))
+             :params (fn [prev route _]
+                       (let [offset (:offset route)
+                             some-param (:some-param route)]
+                         {:offset (or offset 0)
+                          :some-param some-param}))}}))
+
+(deftest infinite-pagination
+  (let [datasources (make-infinite-pagination-datasources)
+        app-db-atom (atom {:route {:data {}}})
+        dataloader (core/make-dataloader datasources)]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (is (= [{:id 1} {:id 2}]
+                                (get-in @app-db-atom [:kv :users])))
+                         (swap! app-db-atom assoc-in [:route :data :offset] 2)
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (is (= [{:id 1} {:id 2} {:id 3} {:id 4}]
+                                (get-in @app-db-atom [:kv :users])))
+                         (swap! app-db-atom assoc-in [:route :data] {:offset 4 :some-param :foo})
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (is (= [{:id 5} {:id 6}]
+                                (get-in @app-db-atom [:kv :users])))))
+                (p/map #(done))
+                (p/error (fn [e]
+                           (is (= false true "Promise rejected"))
+                           (done)))))))
+
+(defn make-race-condition-datasource [log]
+  {:user {:target [:kv :user]
+          :loader (fn [reqs]
+                    (map (fn [r]
+                           (let [delay (or (get-in r [:params :delay]) 0)
+                                 user (get-in r [:params :user])]
+                             (p/promise (fn [resolve reject]
+                                          (js/setTimeout
+                                           (fn []
+                                             (swap! log conj user)
+                                             (resolve user)) delay))))) reqs))
+          :params (fn [_ route _]
+                    route)}})
+
+(deftest race-condition-test
+  (let [log (atom [])
+        datasources (make-race-condition-datasource log)
+        dataloader (core/make-dataloader datasources)
+        app-db-atom (atom {:route {:data {:delay 100 :user 1}}})]
+    (dataloader app-db-atom)
+    (async done
+           (swap! app-db-atom assoc-in [:route :data] {:delay 0 :user 2})
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (is (= 2 (get-in @app-db-atom [:kv :user])))
+                         (p/promise (fn [resolve reject]
+                                      (js/setTimeout resolve 100)))))
+                (p/map (fn []
+                         (is (= [2 1] @log))
+                         (is (= 2 (get-in @app-db-atom [:kv :user])))
+                         (done)))))))
