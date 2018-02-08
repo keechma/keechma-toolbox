@@ -1,7 +1,7 @@
 (defproject keechma/toolbox "0.1.7"
   :description "Keechma Toolbox"
-  :dependencies [[org.clojure/clojure "1.9.0-alpha17"]
-                 [org.clojure/clojurescript "1.9.854"]
+  :dependencies [[org.clojure/clojure "1.9.0"]
+                 [org.clojure/clojurescript "1.9.946"]
                  [reagent "0.7.0"]
                  [binaryage/devtools "0.8.2"]
                  [keechma "0.3.1" :exclusions [cljsjs/react-with-addons]]

@@ -105,6 +105,9 @@
                      {} (:deps datasource))]
     (params-fn prev route deps)))
 
+(defn cache-key [datasource params]
+  [datasource (hash params)])
+
 (defn datasources->loaders [app-datasources datasources app-db results-chan edb-schema]
   (let [route-params (get-in app-db [:route :data])]
     (loop [ds datasources
@@ -126,34 +129,44 @@
                                  :datasource key
                                  :app-db app-db
                                  :target target
-                                 :current-request (get-in @request-cache [loader params])})))))))))
+                                 :current-request (get-in @request-cache (cache-key key params))})))))))))
+
 
 (defn call-loader [loader pending-datasources context]
-  (let [reqs (loader pending-datasources context)]
+  (let [reqs (vec (loader pending-datasources context))]
     (doseq [[idx req] (map-indexed vector reqs)]
-      (swap! request-cache assoc-in [loader (get-in pending-datasources [idx :params])] req))
+      (let [pending-datasource (get pending-datasources idx)
+            c-key (cache-key (:datasource pending-datasource) (:params pending-datasource))]
+        (swap! request-cache assoc-in c-key req)))
     reqs))
 
 (defn start-loaders! [app-db-atom app-datasources datasources results-chan edb-schema context]
   (let [loaders (datasources->loaders app-datasources datasources @app-db-atom results-chan edb-schema)]
-    (doseq [[loader pending-datasources] loaders]
-      (let [pending-datasources-with-current (vec (filter #(not (nil? (:current-request %))) pending-datasources))
+    (doseq [[loader unsorted-pending-datasources] loaders]
+      (let [pending-datasources (vec (sort-by #(nil? (:current-request %)) unsorted-pending-datasources))
+            pending-datasources-with-current (vec (filter #(not (nil? (:current-request %))) pending-datasources))
             pending-datasources-without-current (vec (filter #(nil? (:current-request %)) pending-datasources))
             promises (call-loader loader pending-datasources-without-current context)]
-        (doseq [[idx loader-promise] (map-indexed vector (concat promises (map :current-request pending-datasources-with-current)))]
+       
+        (doseq [[idx loader-promise] (map-indexed vector (concat (map :current-request pending-datasources-with-current) promises))]
           (let [pending-datasource (get pending-datasources idx)]
+
 
             (swap! app-db-atom assoc-in [:kv id-key (:datasource pending-datasource) :status] :pending)
 
             (->> (p/promise loader-promise)
                  (p/map (fn [value]
-                          (let [processor (or (get-in datasources [(:datasource pending-datasource) :processor]) identity)]
-                            (swap! request-cache dissoc-in [loader (:params pending-datasource)])
+                          (let [processor (or (get-in datasources [(:datasource pending-datasource) :processor]) 
+                                              (fn [data & args] data))
+                                c-key (cache-key (:datasource pending-datasource) (:params pending-datasource))]
+
+                            (swap! request-cache dissoc-in c-key)
                             (put! results-chan [:ok (assoc pending-datasource
-                                                           :value (processor value pending-datasource))]))))
+                                                           :value (processor value (assoc pending-datasource :app-db @app-db-atom)))]))))
                  (p/error (fn [error]
-                            (let [pending-datasource (get pending-datasources idx)]                            
-                              (swap! request-cache dissoc-in [loader (:params pending-datasource)])
+                            (let [pending-datasource (get pending-datasources idx)
+                                  c-key (cache-key (:datasource pending-datasource) (:params pending-datasource))]                            
+                              (swap! request-cache dissoc-in c-key)
                               (put! results-chan [:error (assoc pending-datasource :error error)])))))))))))
 
 

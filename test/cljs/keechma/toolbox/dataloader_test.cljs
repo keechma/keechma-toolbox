@@ -200,7 +200,7 @@
                          (swap! app-db-atom assoc-in [:route :data :foo] :baz)
                          (dataloader app-db-atom)))
                 (p/map (fn []
-                         
+
                          (is (= @app-db-atom
                                 {:route {:data {:foo :baz}},
                                  :kv {:keechma.toolbox.dataloader.core/pending #{},
@@ -229,7 +229,7 @@
                                       :foo :baz}}
 
 
-                                
+
 
                                 ))
                          (dataloader app-db-atom)))
@@ -600,3 +600,67 @@
                          (is (= [2 1] @log))
                          (is (= 2 (get-in @app-db-atom [:kv :user])))
                          (done)))))))
+
+
+(defn delayed-loader [reqs]
+  (map 
+   (fn [r]
+     (let [d (get-in r [:params :delay])
+           v (get-in r [:params :value])]
+       
+       (p/promise (fn [resolve reject]
+                    (js/setTimeout #(resolve v) d)))))
+   reqs))
+
+(defn make-cached-datasources [ds]
+  (reduce (fn [acc [i [l d]]]
+            (assoc acc l {:target [:kv :foo l]
+                          :processor (fn [data]
+                                       (str i " - " data))
+                          :loader delayed-loader
+                          :params (fn [_ _ _]
+                                    {:delay d
+                                     :value l})}))
+          {} (map-indexed vector ds)))
+
+
+(deftest cached-test
+  (let [ds [["A" 30]
+            ["B" 100]
+            ["C" 30]
+            ["D" 100]
+            ["E" 30]
+            ["F" 100]
+            ["G" 30]
+            ["H" 100]
+            ["I" 30]
+            ["J" 100]
+            ["K" 30]
+            ["L" 100]
+            ["M" 30]
+            ["N" 100]
+            ["O" 30]
+            ["P" 100]] 
+        datasources (make-cached-datasources ds)
+        dataloader (core/make-dataloader datasources)
+        app-db-atom (atom {:route {:data {}}})
+        success-res (reduce (fn [acc [i [l _]]]
+                      (assoc acc l (str i " - " l)))
+                    {} (map-indexed vector ds))]
+
+    (dataloader app-db-atom)
+    
+
+    (async done
+           (->> (p/promise (fn [resolve _] (js/setTimeout resolve 50)))
+                (p/map #(dataloader app-db-atom {:invalid-datasources #{"A" "C" "E"}}))
+                (p/map (fn []
+                         (let [res (get-in @app-db-atom [:kv :foo])]
+                           (is (= success-res res))
+                           #_(println "-------------"
+                                    (reduce-kv (fn [acc k v]
+                                                 (let [success-v (get success-res k)]
+                                                   (if (= v success-v)
+                                                     acc
+                                                     (conj acc [success-v v])))) [] res))
+                           (done))))))))
