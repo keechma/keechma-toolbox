@@ -1,10 +1,10 @@
-(defproject keechma/toolbox "0.1.7"
+(defproject keechma/toolbox "0.1.8"
   :description "Keechma Toolbox"
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [org.clojure/clojurescript "1.9.946"]
                  [reagent "0.7.0"]
                  [binaryage/devtools "0.8.2"]
-                 [keechma "0.3.1" :exclusions [cljsjs/react-with-addons]]
+                 [keechma "0.3.2" :exclusions [cljsjs/react-with-addons]]
                  [garden "1.3.2"]
                  [funcool/promesa "1.8.1"]
                  [keechma/forms "0.1.2"]
