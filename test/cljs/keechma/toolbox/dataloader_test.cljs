@@ -664,3 +664,36 @@
                                                      acc
                                                      (conj acc [success-v v])))) [] res))
                            (done))))))))
+
+
+(defn make-excess-loader-calls-datasources [log]
+  {:user     {:target [:kv :user]
+              :loader (fn [reqs]
+                        (map (fn [{:keys [params]}]
+                               params) reqs))
+              :params (fn [_ {:keys [user]} _]
+                        {:user user})}
+   :projects {:target [:kv :projects]
+              :loader (fn [reqs]
+                        (map (fn [{:keys [params]}]
+                               (swap! log conj params)
+                               params) reqs))
+              :deps   [:user]
+              :params (fn [_ _ _]
+                        {:call :true})}})
+
+(deftest excess-loader-calls
+  (let [log (atom [])
+        datasources (make-excess-loader-calls-datasources log)
+        dataloader (core/make-dataloader datasources)
+        app-db-atom (atom {:route {:data {}}})]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (swap! app-db-atom assoc-in [:route :data :user] 1)
+                         (dataloader app-db-atom)))
+                (p/map (fn []
+                         (is (= @log [{:call :true}]))
+                         (done)))
+                (p/error (fn [error]
+                           (done)))))))
