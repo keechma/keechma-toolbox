@@ -178,15 +178,15 @@
                             (let [pending-datasource (get pending-datasources idx)
                                   c-key (cache-key (:datasource pending-datasource) (:params pending-datasource))]                            
                               (swap! request-cache dissoc-in c-key)
-                              (put! results-chan [:error (assoc pending-datasource :error error)])))))))))))
+                              (put! results-chan [:error (assoc pending-datasource :error error)]))))))))))) ()
 
 
 (defn has-pending-datasources? [app-db]
   (not (empty? (get-in app-db [:kv ::pending]))))
 
 (defn store-datasource! [app-db-atom edb-schema payload]
-  (if (= ::fullfiled (:value payload))
-    app-db-atom
+  (if (= ::fulfilled (:value payload))
+    (reset! app-db-atom (remove-pending-datasource @app-db-atom (:datasource payload)))
     (let [app-db @app-db-atom
           datasource-key (:datasource payload)
           value (:value payload)
@@ -303,14 +303,14 @@
 
               (mark-pending! app-db-atom edb-schema (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
               (start-loaders! app-db-atom datasources (select-keys datasources start-nodes) invalid-datasources results-chan edb-schema context)
-
+              
               (go-loop []
                 (if (and @running? (= dataloader-id @active-dataloader-id-atom))
                   (if (has-pending-datasources? @app-db-atom)
                     (let [[status payload] (<! results-chan)
                           t-dependents (dep/transitive-dependents g (:datasource payload))]
                       (case status
-                        :ok (do
+                        :ok (when (and @running? (= dataloader-id @active-dataloader-id-atom))
                               (store-datasource! app-db-atom edb-schema payload)
                               (start-dependent-loaders! app-db-atom datasources (select-keys datasources t-dependents) invalid-datasources results-chan edb-schema context))
                         :error (reset! app-db-atom

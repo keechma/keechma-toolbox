@@ -573,13 +573,13 @@
   {:user {:target [:kv :user]
           :loader (fn [reqs]
                     (map (fn [r]
-                           (let [delay (or (get-in r [:params :delay]) 0)
+                           (let [u-delay (or (get-in r [:params :delay]) 0)
                                  user (get-in r [:params :user])]
                              (p/promise (fn [resolve reject]
                                           (js/setTimeout
                                            (fn []
                                              (swap! log conj user)
-                                             (resolve user)) delay))))) reqs))
+                                             (resolve user)) u-delay))))) reqs))
           :params (fn [_ route _]
                     route)}})
 
@@ -601,6 +601,59 @@
                          (is (= 2 (get-in @app-db-atom [:kv :user])))
                          (done)))))))
 
+(defn make-race-condition-datasource-2 [log]
+  (let [product-id (atom 0)]
+    {:user {:target [:kv :user]
+            :loader (fn [reqs]
+                      (map (fn [r]
+                             (let [u-delay (or (get-in r [:params :user-delay]) 0)
+                                   user (get-in r [:params :user])]
+                               (p/promise (fn [resolve reject]
+                                            (js/setTimeout
+                                             (fn []
+                                               (swap! log conj user)
+                                               (resolve user)) u-delay))))) reqs))
+            :params (fn [_ route _]
+                      route)}
+     :products {:target [:kv :product]
+                :deps [:user]
+                :loader (fn [reqs]
+                          (map (fn [r]
+                                 (swap! product-id inc)
+                                 (let [p-delay (or (get-in r [:params :product-delay]) 0)
+                                       product {:id @product-id :user (get-in r [:params :user])}]
+                                   (p/promise (fn [resolve reject]
+                                                (js/setTimeout
+                                                 (fn []
+                                                   (swap! log conj product)
+                                                   (resolve product)) p-delay))))) reqs))
+                :params (fn [_ r {:keys [user]}]
+                          (assoc r :user user))}}))
+
+(deftest race-condition-test-2
+  (let [log (atom [])
+        datasources (make-race-condition-datasource-2 log)
+        dataloader (core/make-dataloader datasources)
+        app-db-atom (atom {:route {:data {:user-delay 0 :product-delay 50 :user 1}}})]
+    (dataloader app-db-atom)
+    (async done
+ 
+           (->> (p/promise (fn [resolve reject]
+                             (js/setTimeout
+                              (fn []
+                                (swap! app-db-atom assoc-in [:route :data] {:user-delay 0 :product-delay 0 :user 2})
+                                (resolve)) 10)))
+
+                (p/map #(dataloader app-db-atom))
+                (p/map (fn []
+                         (is (= 2 (get-in @app-db-atom [:kv :user])))
+                         (p/promise (fn [resolve reject]
+                                      (js/setTimeout resolve 100)))))
+                (p/map (fn []
+                         (is (= [1 2 {:id 2 :user 2} {:id 1 :user 1}] @log))
+                         (is (= 2 (get-in @app-db-atom [:kv :user])))
+                         (is (= {:id 2 :user 2} (get-in @app-db-atom [:kv :product])))
+                         (done)))))))
 
 (defn delayed-loader [reqs]
   (map 
