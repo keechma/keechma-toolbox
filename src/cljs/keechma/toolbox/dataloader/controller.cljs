@@ -53,7 +53,8 @@
       (let [[command args] (<! in-chan)]
         (when command
           (case command
-            :load-data (call-dataloader args))
+            :load-data (call-dataloader args)
+            nil)
           (recur))))))
 
 
