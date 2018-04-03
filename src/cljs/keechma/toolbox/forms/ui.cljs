@@ -15,10 +15,10 @@
 (defn data> [ctx form-props]
   (:data (form-state> ctx form-props)))
 
-(defn value-for> [ctx form-props path]
-  (get-in (data> ctx form-props) (key-to-path key)))
+(defn value-in> [ctx form-props path]
+  (get-in (data> ctx form-props) (key-to-path path)))
 
-(defn errors-for> [ctx form-props path]
+(defn errors-in> [ctx form-props path]
   (let [form-state (form-state> ctx form-props)
         path (key-to-path path)
         is-dirty? (or (contains? (:cached-dirty-paths form-state) path)
@@ -27,7 +27,7 @@
       (get-in (:errors form-state) path))))
 
 (defn valid-in?> [ctx form-props path]
-  (nil? (errors-for> ctx form-props path)))
+  (nil? (errors-in> ctx form-props path)))
 
 (defn valid?> [ctx form-props]
   (empty? (errors> ctx form-props)))
@@ -65,7 +65,7 @@
   ([ctx form-props] (<submit ctx form-props nil))
   ([ctx form-props e]
    (when e (.preventDefault e))
-   (ui/subscription ctx [forms-core/id-key :on-submit] form-props)))
+   (ui/send-command ctx [forms-core/id-key :on-submit] form-props)))
 
 (defn <call [ctx form-props & args]
   (ui/send-command ctx [forms-core/id-key :call] [form-props args]))
