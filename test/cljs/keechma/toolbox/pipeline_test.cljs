@@ -4,7 +4,9 @@
             [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline!]]
             [keechma.app-state :as app-state]
             [promesa.core :as p]
-            [promesa.impl :refer [Promise]]))
+            [cljs.core.async :refer [<! >! chan close! put! alts! timeout]]
+            [promesa.impl :refer [Promise]])
+  (:require-macros [cljs.core.async.macros :as m :refer [go alt!]]))
 
 (.config Promise #js {:cancellation true})
 
@@ -228,3 +230,28 @@
            (app-state/start! app)
            (js/setTimeout #(set! (.-hash js/location) "#!?new-api=2") 10)
            (js/setTimeout #(set! (.-hash js/location) "") 20))))
+
+(defn pipelines-broadcast-controllers [log]
+  {:broadcaster (pp-controller/constructor
+                 (constantly true)
+                 {:on-start (pipeline! [value app-db]
+                              (pp/broadcast! ::command ::payload)
+                              (swap! log inc))})
+   :broadcast-client (pp-controller/constructor
+                      (constantly true)
+                      {::command (pipeline! [value app-db]
+                                   (is (= value ::payload))
+                                   (swap! log inc))})})
+
+(deftest pipelines-broadcast
+  (async done
+         (let [log (atom 0)
+               target-el (add-mount-target-el)
+               app {:controllers (pipelines-broadcast-controllers log) 
+                    :components app-components
+                    :html-element target-el}]
+           (app-state/start! app)
+           (go
+             (<! (timeout 10))
+             (is (= 2 @log))
+             (done)))))
