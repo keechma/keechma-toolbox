@@ -2,10 +2,14 @@
   (:require [cljs.test :refer-macros [deftest testing is async]]
             [keechma.toolbox.forms.core :as forms-core]
             [keechma.toolbox.forms.controller :as forms-controller]
+            [keechma.toolbox.forms.mount-controller :as forms-mount-controller]
             [keechma.app-state :as app-state]
             [keechma.controller :as controller]
             [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline!]]
-            [cljs.core.async :refer (timeout <!)])
+            [cljs.core.async :refer (timeout <!)]
+            [keechma.toolbox.forms.app :refer [install]]
+            [keechma.ui-component :as ui]
+            [keechma.toolbox.test-util :refer [make-container]])
   (:require-macros [cljs.core.async.macros :refer [go]]))
 
 (defrecord Form [])
@@ -76,3 +80,41 @@
                      :on-unmount [:form :id]}
                     (:kv @app-db)))
              (done)))))
+
+(deftest forms-for-route
+  (is (= [[:foo :bar] [:foo :baz] [:qux :foo-1]]
+         (forms-mount-controller/forms-for-route {} {} {:foo (fn [_ _] [:bar :baz])
+                                                        :qux (fn [_ _] :foo-1)}))))
+
+
+(defrecord Form1 [])
+
+(def forms-install-forms {:form1 (->Form1)})
+(def forms-install-forms-mount {:form1 (fn [_ _] :form)})
+
+(deftest forms-install
+  (let [[c unmount] (make-container)
+        app (-> {:html-element c
+                 :components {:main (ui/constructor {:renderer (fn [ctx] [:div])})}}
+                (install forms-install-forms forms-install-forms-mount))]
+    (is (= (keys (:controllers app))
+           [:keechma.toolbox.forms.core/forms :keechma.toolbox.forms.mount-controller/id]))
+    (is (= (keys (:subscriptions app))
+           [:keechma.toolbox.forms.core/forms]))
+    (doseq [[_ c] (:components app)]
+      (is (= [:keechma.toolbox.forms.core/forms]
+             (:subscription-deps c))))))
+
+
+(deftest forms-install-without-mount-controller
+  (let [[c unmount] (make-container)
+        app (-> {:html-element c
+                 :components {:main (ui/constructor {:renderer (fn [ctx] [:div])})}}
+                (install forms-install-forms))]
+    (is (= (keys (:controllers app))
+           [:keechma.toolbox.forms.core/forms]))
+    (is (= (keys (:subscriptions app))
+           [:keechma.toolbox.forms.core/forms]))
+    (doseq [[_ c] (:components app)]
+      (is (= [:keechma.toolbox.forms.core/forms]
+             (:subscription-deps c))))))

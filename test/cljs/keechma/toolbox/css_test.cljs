@@ -5,13 +5,9 @@
             [clojure.set :as set]
             [keechma.app-state :as app-state]
             [keechma.toolbox.css.app :as css]
-            [cljs-react-test.utils :as tu]))
+            [keechma.toolbox.test-util :refer [make-container]]))
 
-(defn make-container []
-  (let [c (tu/new-container!)]
-    [c (fn []
-         (tu/unmount! c)
-         (.removeChild (.-body js/document) c))]))
+
 
 (defelement -my-element
   :class [:foo :bar])
