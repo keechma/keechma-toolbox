@@ -2,7 +2,10 @@
   :description "Keechma Toolbox"
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [org.clojure/clojurescript "1.9.946"]
-                 [reagent "0.7.0"]
+                 [reagent "0.7.0" :exclusions [cljsjs/react cljsjs/react-dom]]
+                 [cljsjs/react-with-addons "15.6.1-0"]
+                 [cljsjs/react-dom "15.6.1-0" :exclusions [cljsjs/react]]
+                 [cljsjs/react-dom-server "15.6.1-0" :exclusions [cljsjs/react]]
                  [binaryage/devtools "0.8.2"]
                  [keechma "0.3.4" :exclusions [cljsjs/react-with-addons]]
                  [garden "1.3.2"]
@@ -11,7 +14,8 @@
                  [medley "0.8.4"]
                  [cljs-ajax "0.5.8"]
                  [com.stuartsierra/dependency "0.2.0"]
-                 [keechma/entitydb "0.1.4"]]
+                 [keechma/entitydb "0.1.4"]
+                 [org.clojars.mihaelkonjevic/cljs-react-test "0.1.5" :exclusions [cljsjs/react-with-addons]]]
 
   :min-lein-version "2.5.3"
 
