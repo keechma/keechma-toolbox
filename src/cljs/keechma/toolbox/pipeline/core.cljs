@@ -25,6 +25,11 @@
   (call! [this controller _]
     (controller/send-command controller (:command this) (:payload this))))
 
+(defrecord BroadcastSideffect [command payload]
+  ISideffect
+  (call! [this controller _]
+    (controller/broadcast controller (:command this) (:payload this))))
+
 (defrecord ExecuteSideffect [command payload]
   ISideffect
   (call! [this controller _]
@@ -86,6 +91,15 @@ element is the command name.
 "
   [command payload]
   (->SendCommandSideffect command payload))
+
+(defn broadcast!
+  "
+Broadcast pipeline sideffect.
+
+Accepts `command` and `payload` arguments.
+"
+  [command payload]
+  (->BroadcastSideffect command payload))
 
 (defn redirect!
   "
