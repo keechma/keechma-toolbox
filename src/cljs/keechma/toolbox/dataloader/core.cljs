@@ -321,4 +321,4 @@
                         nil)
                       (recur))
                     (resolve @app-db-atom))
-                  (resolve @app-db-atom)))))))))))
+                  (reject (ex-info "New dataloader started" {}))))))))))))

@@ -45,7 +45,8 @@
                                :invalid-datasources (set invalid-datasources)})
                (p/map (fn []
                         (swap! app-db-atom assoc-in dataloader-status-key :loaded)
-                        (broadcast this @app-db-atom ::status-change :loaded)))))]
+                        (broadcast this @app-db-atom ::status-change :loaded)))
+               (p/error (fn []))))]
 
     (call-dataloader nil)
 
