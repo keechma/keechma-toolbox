@@ -153,7 +153,8 @@
                                       :jwt "JWT!",
                                       :user {:current nil},
                                       :favorites {:current nil}}}))
-                         (done)))))))
+                         (done)))
+                (p/error (fn []))))))
 
 (deftest route-dependent-dataloader
   (let [call-counter (atom 0)
@@ -235,7 +236,8 @@
                          (dataloader app-db-atom)))
                 (p/map (fn []   
                          (= @call-counter 3)
-                         (done)))))))
+                         (done)))
+                (p/error (fn []))))))
 
 (def datasources-with-edb
   {:jwt {:target [:kv :jwt]
@@ -299,7 +301,8 @@
                            (is (= {:id 2 :last-name "user 2 last-name" :name "user 2" :jwt "JWT" :jwt-list "JWT"}
                                   (edb/get-named-item edb-schema edb :user :current)))
                            (is (= "JWT" (get-in app-db [:kv :jwt])))
-                           (done))))))))
+                           (done))))
+                (p/error (fn []))))))
 
 
 
@@ -331,7 +334,8 @@
                          (let [app-db @app-db-atom
                                edb (:entity-db app-db)]
                            (is (= [] (edb/get-collection edb-schema edb :user :list)))
-                           (done))))))))
+                           (done))))
+                (p/error (fn []))))))
 
 (def datasources-with-edb-relations
   {:current-article {:target [:edb/named-item :article/current]
@@ -387,7 +391,7 @@
                                   :c-many {[:article 3 :tags] [1 3] [:article 1 :tags] [1 2]}}}
                                 (:entity-db @app-db-atom)))
                          (done)))
-                ))))
+                (p/error (fn []))))))
 
 (def datasources-with-context-loader
   {:foo {:loader (fn [reqs context]
@@ -406,7 +410,8 @@
            (->> (dataloader app-db-atom {:context context})
                 (p/map (fn []
                          (is (= {:source :context} (:foo @app-db-atom)))
-                         (done)))))))
+                         (done)))
+                (p/error (fn []))))))
 
 (defn make-datasource-that-tracks-calls [tracking-atom]
   {:user {:loader (fn [reqs]
@@ -425,13 +430,15 @@
   (let [tracking-atom (atom 0)
         app-db-atom (atom {:route {:data {}}})
         dataloader (core/make-dataloader (make-datasource-that-tracks-calls tracking-atom))]
-    (dataloader app-db-atom)
+    (->> (dataloader app-db-atom)
+         (p/error (fn [])))
     (async done
            (->> (dataloader app-db-atom)
                 (p/map (fn []
                          (is (= {:some :data} (:user @app-db-atom)))
                          (is (= 1 @tracking-atom))
-                         (done)))))))
+                         (done)))
+                (p/error (fn [] (is false)))))))
 
 (defn make-inc-datasources []
   (let [counter (atom 0)]
@@ -464,7 +471,8 @@
                 (p/map (fn []
                          (is (= 2 (get-in @app-db-atom [:kv :counter])))
                          (is (= 3 (get-in @app-db-atom [:kv :rel-counter])))
-                         (done)))))))
+                         (done)))
+                (p/error (fn [] (is false)))))))
 
 (defn make-params-test-datasources [log]
   {:counter {:target [:kv :counter]
@@ -490,7 +498,8 @@
                 (p/map (fn []
                          (doseq [l (partition 2 @log)]
                            (is (apply = l)))
-                         (done)))))))
+                         (done)))
+                (p/error (fn [] (is false)))))))
 
 
 (defn make-prev-validation-datasources [log]
@@ -520,7 +529,8 @@
                          (dataloader app-db-atom)))
                 (p/map (fn []
                          (is (= [nil nil 2 2 3 3 4 4] @log))
-                         (done)))))))
+                         (done)))
+                (p/error (fn [] (is false)))))))
 
 (defn make-infinite-pagination-datasources []
   (let [users-list (vec (map (fn [i] {:id i}) (range 1 11)))]
@@ -588,7 +598,8 @@
         datasources (make-race-condition-datasource log)
         dataloader (core/make-dataloader datasources)
         app-db-atom (atom {:route {:data {:delay 100 :user 1}}})]
-    (dataloader app-db-atom)
+    (->> (dataloader app-db-atom)
+         (p/error (fn [])))
     (async done
            (swap! app-db-atom assoc-in [:route :data] {:delay 0 :user 2})
            (->> (dataloader app-db-atom)
@@ -599,7 +610,8 @@
                 (p/map (fn []
                          (is (= [2 1] @log))
                          (is (= 2 (get-in @app-db-atom [:kv :user])))
-                         (done)))))))
+                         (done)))
+                (p/error (fn [] (is false)))))))
 
 (defn make-race-condition-datasource-2 [log]
   (let [product-id (atom 0)]
@@ -635,7 +647,8 @@
         datasources (make-race-condition-datasource-2 log)
         dataloader (core/make-dataloader datasources)
         app-db-atom (atom {:route {:data {:user-delay 0 :product-delay 50 :user 1}}})]
-    (dataloader app-db-atom)
+    (->> (dataloader app-db-atom)
+         (p/error (fn [])))
     (async done
  
            (->> (p/promise (fn [resolve reject]
@@ -653,7 +666,8 @@
                          (is (= [1 2 {:id 2 :user 2} {:id 1 :user 1}] @log))
                          (is (= 2 (get-in @app-db-atom [:kv :user])))
                          (is (= {:id 2 :user 2} (get-in @app-db-atom [:kv :product])))
-                         (done)))))))
+                         (done)))
+                (p/error (fn [] (is false)))))))
 
 (defn delayed-loader [reqs]
   (map 
@@ -701,7 +715,8 @@
                       (assoc acc l (str i " - " l)))
                     {} (map-indexed vector ds))]
 
-    (dataloader app-db-atom)
+    (->> (dataloader app-db-atom)
+         (p/error (fn [])))
     
 
     (async done
@@ -716,7 +731,8 @@
                                                    (if (= v success-v)
                                                      acc
                                                      (conj acc [success-v v])))) [] res))
-                           (done))))))))
+                           (done))))
+                (p/error (fn [] (is false)))))))
 
 
 (defn make-excess-loader-calls-datasources [log]
@@ -749,4 +765,5 @@
                          (is (= @log [{:call :true}]))
                          (done)))
                 (p/error (fn [error]
+                           (is false)
                            (done)))))))
