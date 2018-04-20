@@ -55,6 +55,11 @@
         (pipeline controller app-db-atom args)
         (throw (ex-info (str "Pipeline " pipeline-key " doesn't exist") {:pipeline pipeline-key}))))))
 
+(defrecord RerouteSideffect []
+  ISideffect
+  (call! [_ controller _]
+    (controller/reroute controller)))
+
 (defn commit!
   "
 Commit pipeline sideffect.
@@ -124,11 +129,15 @@ Runs multiple sideffects sequentially:
   [& sideffects]
   (->DoSideffect sideffects))
 
+
 (defn run-pipeline!
   "Runs a pipeline in a way that blocks the current pipeline until the current pipeline is done. It behaves same as `execute! but blocks the parent pipeline until it's done. Return value and errors will be ignored by the parent pipeline."
   ([pipeline-key] (run-pipeline! pipeline-key nil))
   ([pipeline-key args]
    (->RunPipelineSideffect pipeline-key args)))
+
+(defn reroute! []
+  (->RerouteSideffect))
 
 (defn ^:private process-error [err]
   (cond

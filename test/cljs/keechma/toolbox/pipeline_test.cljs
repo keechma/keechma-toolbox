@@ -61,6 +61,7 @@
                  {:inner :pipeline}))
              (is (= value {:inner :pipeline}))
              (pp/execute! :some-action :some-payload)
+             (pp/reroute!)
              (delay-pipeline 10)
              (is (= (get-in app-db [:kv :some-action-payload]) :some-payload))
              (pp/run-pipeline! :some-action-2 :some-payload-2)
