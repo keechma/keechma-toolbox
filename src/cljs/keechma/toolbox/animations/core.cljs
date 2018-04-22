@@ -1,4 +1,4 @@
-(ns spotm3.animation.core
+(ns keechma.toolbox.animations.core
   (:require [keechma.toolbox.animations.helpers :as helpers]
             [keechma.toolbox.animations.animator :as animator]
             [keechma.toolbox.tasks :refer [stop-task blocking-raf! non-blocking-raf! stop-task! cancel-task!]]
