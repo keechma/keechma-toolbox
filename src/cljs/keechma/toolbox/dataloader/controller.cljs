@@ -18,7 +18,9 @@
 (defn run-dataloader!
   ([] (run-dataloader! nil))
   ([invalid-datasources]
-   (pp/send-command! [dataloader/id-key :load-data] invalid-datasources)))
+   (pipeline! [value app-db]
+     (pp/commit! (assoc-in app-db dataloader-status-key :pending))
+     (pp/send-command! [dataloader/id-key :load-data] invalid-datasources))))
 
 (defn broadcast [controller app-db command payload]
   (let [running-controllers-keys (keys (get-in app-db [:internal :running-controllers]))]
