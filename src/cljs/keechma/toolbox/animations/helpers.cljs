@@ -28,9 +28,9 @@
   ([value start-color end-color from-low from-high rgb?]
    (let [[start-r start-g start-b] (hex->rgb start-color)
          [end-r end-g end-b] (hex->rgb end-color)
-         r (map-value-in-range value start-r end-r)
-         g (map-value-in-range value start-g end-g)
-         b (map-value-in-range value start-b end-b)]
+         r (map-value-in-range value start-r end-r from-low from-high)
+         g (map-value-in-range value start-g end-g from-low from-high)
+         b (map-value-in-range value start-b end-b from-low from-high)]
      (if rgb?
        (str "rgb(" r "," g "," b ")")
        (rgb->hex (map #(.round js/Math (min 255 (max % 0))) [r g b]))))))
