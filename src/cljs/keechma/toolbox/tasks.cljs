@@ -49,6 +49,7 @@
       (dissoc-in [:kv ::tasks id :states version])
       (dissoc-in [:kv ::tasks id :stoppers version])))
 
+
 (defn register-task!
   ([app-db-atom id producer reducer resolve runner-chan]
    (let [version (gensym id)
@@ -67,8 +68,8 @@
                        (if (instance? TaskStateUpdate new-app-db)
                          (throw (ex-info "It's impossible to change task state when the task is not running"
                                          {:task id :state state}))
-                         new-app-db))
-                     app-db))]
+                         (clear-task-version new-app-db id version)))
+                     (clear-task-version app-db id version)))]
 
      (reset! app-db-atom (-> (finish-task! @app-db-atom id ::cancelled)
                              (assoc-in [:kv ::tasks id :version] version)
@@ -76,7 +77,6 @@
                              (assoc-in [:kv ::tasks id :stoppers version] stopper)))
      {:stopper stopper
       :version version})))
-
 
 
 (defn update-task-state! [state]
@@ -101,6 +101,11 @@
 
 (defn ex-task-cancelled [id version]
   (ex-info "Task cancelled" {::task {:id id :version version :state ::cancelled}}))
+
+(defn task-running? [app-db id]
+  (let [task (get-in app-db [:kv ::tasks id])
+        current-version (:version task)]
+    (not (nil? (get-in task [:states current-version])))))
 
 (defn task-loop [{:keys [producer reducer ctrl app-db-atom value resolve reject id]}]
   (let [runner-chan (chan)
