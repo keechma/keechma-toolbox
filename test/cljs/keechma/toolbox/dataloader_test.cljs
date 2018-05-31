@@ -767,3 +767,17 @@
                 (p/error (fn [error]
                            (is false)
                            (done)))))))
+
+
+(deftest check-dataloader-rejection
+  (let [log (atom [])
+        datasources (make-race-condition-datasource-2 log)
+        dataloader (core/make-dataloader datasources)
+        app-db-atom (atom {:route {:data {:user-delay 0 :product-delay 50 :user 1}}})]
+    (->> (dataloader app-db-atom)
+         (p/error (fn [e]
+                    (is (= :keechma.toolbox.dataloader.core/new-dataloader-started (:type (.-data e)))))))
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map #(done))
+                (p/error (fn [] (is false)))))))

@@ -48,7 +48,9 @@
                (p/map (fn []
                         (swap! app-db-atom assoc-in dataloader-status-key :loaded)
                         (broadcast this @app-db-atom ::status-change :loaded)))
-               (p/error (fn []))))]
+               (p/error (fn [e]
+                          (when (not= :keechma.toolbox.dataloader.core/new-dataloader-started (:type (.-data e)))
+                            (throw e))))))]
 
     (call-dataloader nil)
 
