@@ -313,11 +313,18 @@
                         :ok (when (and @running? (= dataloader-id @active-dataloader-id-atom))
                               (store-datasource! app-db-atom edb-schema payload)
                               (start-dependent-loaders! app-db-atom datasources (select-keys datasources t-dependents) invalid-datasources results-chan edb-schema context))
-                        :error (reset! app-db-atom
-                                       (-> @app-db-atom
-                                           (store-datasource-error! edb-schema payload)
-                                           (mark-dependent-errors!
-                                            datasources (select-keys datasources t-dependents) edb-schema payload)))
+                        :error (do
+                                 (when ^boolean js/goog.DEBUG
+                                   (let [error (:error payload)
+                                         original-message (.-message error)
+                                         message (str "Dataloader error in " (:datasource payload) " datasource (" original-message ")")]
+                                     (set! (.-message error) message)
+                                     (.error js/console error)))
+                                 (reset! app-db-atom
+                                         (-> @app-db-atom
+                                             (store-datasource-error! edb-schema payload)
+                                             (mark-dependent-errors!
+                                              datasources (select-keys datasources t-dependents) edb-schema payload))))
                         nil)
                       (recur))
                     (resolve @app-db-atom))
