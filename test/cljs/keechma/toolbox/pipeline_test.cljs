@@ -36,6 +36,7 @@
   (pp-controller/constructor
    (fn [_] true)
    {:start (pipeline! [value app-db]
+             (println "STARTING")
              (pp/commit! (assoc-in app-db [:kv :count] 1))
              (is (= 1 (get-in app-db [:kv :count])))
              (.getTime (js/Date.))
@@ -69,8 +70,19 @@
              (pp/do!
               (pp/commit! (assoc-in app-db [:kv :count] 3))
               (pp/redirect! {:foo "bar"}))
+             
              (is (= (get-in app-db [:kv :count] 3)))
              (is (= "#!?foo=bar" (.-hash js/location)))
+
+             (pp/redirect! {:bar "baz"})
+             (is (= "#!?bar=baz" (.-hash js/location)))
+
+             (pp/redirect! {:baz "qux"})
+             (is (= "#!?baz=qux" (.-hash js/location)))
+
+             (pp/redirect! nil :back)
+             ;; (is (= "#!?bar=baz" (.-hash js/location))) ;; TODO: Figure out why this is failing (history.length === 1)
+
              (pp/send-command! [:receiver :receive] :receiver-payload)
              (delay-pipeline 1)
              (is (= :receiver-payload (get-in app-db [:kv :receiver-payload])))

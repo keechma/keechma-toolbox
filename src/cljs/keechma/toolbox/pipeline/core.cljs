@@ -35,10 +35,14 @@
   (call! [this controller _]
     (controller/execute controller (:command this) (:payload this))))
 
-(defrecord RedirectSideffect [params]
+(defrecord RedirectSideffect [params action]
   ISideffect
   (call! [this controller _]
-    (controller/redirect controller (:params this))))
+    (let [action (:action this)
+          params (:params this)]
+      (if action
+        (controller/redirect controller params action)
+        (controller/redirect controller params)))))
 
 (defrecord DoSideffect [sideffects]
   ISideffect
@@ -113,8 +117,10 @@ Redirect pipeline sideffect.
 Accepts `params` argument. Page will be redirected to a new URL which will be generated from the passed in params argument. If you need to 
 access the current route data, it is present in the pipeline `app-db` argument under the `[:route :data]` path.
 "
-  [params]
-  (->RedirectSideffect params))
+  ([params]
+   (redirect! params nil))
+  ([params action]
+   (->RedirectSideffect params action)))
 
 (defn do!
   "
