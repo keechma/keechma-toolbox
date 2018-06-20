@@ -781,3 +781,23 @@
            (->> (dataloader app-db-atom)
                 (p/map #(done))
                 (p/error (fn [] (is false)))))))
+
+(def datasources-with-missing-datasource 
+  {:user {:target [:kv :user]
+          :deps [:jwt]
+          :loader (fn [reqs] (map (fn [r] nil) reqs))
+          :params (fn [_ _ {:keys [jwt]}])}})
+
+(deftest depending-on-non-existing-datasource
+  (let [log (atom 0)
+        datasources datasources-with-missing-datasource
+        dataloader (core/make-dataloader datasources)
+        app-db-atom (atom {:route {:data {}}})]
+    (async done
+           (->> (dataloader app-db-atom)
+                (p/map (fn []
+                         (is false)
+                         (done)))
+                (p/error (fn [e]
+                           (is (= :keechma.toolbox.dataloader.core/missing-datasource (:type (.-data e))))
+                           (done)))))))

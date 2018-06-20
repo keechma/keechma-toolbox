@@ -270,6 +270,9 @@
                                     (= ::ignore new-datasource-params))
                                 (= :completed (:status datasource-meta)))))]
 
+        (when (nil? datasource)
+          (throw (ex-info (str "Missing datasource " datasource-key) {:type ::missing-datasource})))
+
         (recur (assoc datasources-plan datasource-key
                       {:deps-fulfilled? datasource-deps-fulfilled?
                        :reload? reload?

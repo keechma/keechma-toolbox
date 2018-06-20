@@ -36,7 +36,6 @@
   (pp-controller/constructor
    (fn [_] true)
    {:start (pipeline! [value app-db]
-             (println "STARTING")
              (pp/commit! (assoc-in app-db [:kv :count] 1))
              (is (= 1 (get-in app-db [:kv :count])))
              (.getTime (js/Date.))
