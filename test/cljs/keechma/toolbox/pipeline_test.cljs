@@ -86,7 +86,16 @@
              (pp/send-command! [:receiver :receive] :receiver-payload)
              (delay-pipeline 1)
              (is (= :receiver-payload (get-in app-db [:kv :receiver-payload])))
+             
+             (pp/execute! :some-action-3 "THIS IS PROXIED THROUGH SOME ACTION 3")
+             (delay-pipeline 10)
+             
+             (is (= "THIS IS PROXIED THROUGH SOME ACTION 3" (get-in app-db [:kv :some-action-4-payload])))
+             
              (done))
+    :some-action-3 :some-action-4
+    :some-action-4 (pipeline! [value app-db]
+                     (pp/commit! (assoc-in app-db [:kv :some-action-4-payload] value)))
     :some-action-2 (pipeline! [value app-db]
                      (pp/commit! (assoc-in app-db [:kv :some-action-2-payload] value)))
     :some-action (pipeline! [value app-db]

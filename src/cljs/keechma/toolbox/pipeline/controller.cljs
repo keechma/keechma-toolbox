@@ -9,6 +9,12 @@
                           :stop          :on-stop
                           :route-changed :on-route-changed})
 
+(defn get-pipeline [pipelines pipeline-name]
+  (let [pipeline (get pipelines pipeline-name)]
+    (if (keyword? pipeline)
+      (get pipelines pipeline)
+      pipeline)))
+
 (defrecord PipelineController [controller-api pipelines])
 
 (defmethod controller/params PipelineController [this route-params]
@@ -26,7 +32,7 @@
   (go-loop []
     (let [[command args] (<! in-chan)
           pipeline-name (or (get pipeline-rename-map command) command)]
-      (when-let [pipeline (get-in this [:pipelines pipeline-name])]
+      (when-let [pipeline (get-pipeline (:pipelines this) pipeline-name)]
         (pipeline this app-db-atom args))
       (when command (recur)))))
 
