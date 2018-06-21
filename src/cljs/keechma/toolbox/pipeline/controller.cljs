@@ -56,13 +56,13 @@
 (defn prepare-pipelines [pipelines]
   (when (and (:stop pipelines)
              (:on-stop pipelines))
-    (throw (redundant-pipeline-message "stop") {}))
+    (throw (ex-info (redundant-pipeline-message "stop") {})))
   (when (and (:start pipelines)
              (:on-start pipelines))
-    (throw (redundant-pipeline-message "start") {}))
+    (throw (ex-info (redundant-pipeline-message "start") {})))
   (when (and (:route-changed pipelines)
              (:on-route-changed pipelines))
-    (throw (redundant-pipeline-message "route-changed") {}))
+    (throw (ex-info (redundant-pipeline-message "route-changed") {})))
   (set/rename-keys pipelines {:stop          :on-stop
                               :start         :on-start
                               :route-changed :on-route-changed}))
