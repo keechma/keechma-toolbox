@@ -276,3 +276,31 @@
              (<! (timeout 10))
              (is (= 2 @log))
              (done)))))
+
+(defn throwing-fn [msg]
+  (throw (ex-info msg {})))
+
+(defn nested-pipeline-rescue-block-controller [log]
+  (pp-controller/constructor
+      (constantly true)
+      {:on-start (pipeline! [value app-db]
+                   (pipeline! [value app-db]
+                     (throwing-fn "#1")
+                     (rescue! [error]
+                       (throwing-fn "#2")))
+                   (rescue! [error]
+                     (swap! log inc)
+                     (is (= "#2" (.-message (:payload error))))))}))
+
+(deftest nested-pipeline-rescue-block
+  (async done
+         (let [log (atom 0)
+               target-el (add-mount-target-el)
+               app {:controllers {:troublemaker (nested-pipeline-rescue-block-controller log)} 
+                    :components app-components
+                    :html-element target-el}]
+           (app-state/start! app)
+           (go
+             (<! (timeout 10))
+             (is (= 1 @log))
+             (done)))))

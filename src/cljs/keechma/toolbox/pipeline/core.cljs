@@ -246,9 +246,13 @@ Runs multiple sideffects sequentially:
                    (if (seq rescue)
                      (recur :rescue rescue prev-value resolved-value)
                      (reject (or (:payload resolved-value) resolved-value)))
-
+                   
                    (and error? (= block :rescue)
                         (not= error resolved-value))
+                   (reject (or (:payload resolved-value) resolved-value))
+
+                   (and error? (= block :rescue)
+                        (= error resolved-value))
                    (reject (or (:payload error) error))
 
                    :else
