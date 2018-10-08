@@ -4,11 +4,9 @@
             [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline!]]
             [keechma.app-state :as app-state]
             [promesa.core :as p]
-            [cljs.core.async :refer [<! >! chan close! put! alts! timeout]]
-            [promesa.impl :refer [Promise]])
+            [cljs.core.async :refer [<! >! chan close! put! alts! timeout]])
   (:require-macros [cljs.core.async.macros :as m :refer [go alt!]]))
 
-(.config Promise #js {:cancellation true})
 
 (def app-components
   {:main {:renderer (fn [_] [:div])}})
@@ -79,8 +77,10 @@
              (pp/redirect! {:baz "qux"})
              (is (= "#!?baz=qux" (.-hash js/location)))
 
+             (println "1" (.-hash js/location))
              (pp/redirect! nil :back)
-             ;; (is (= "#!?bar=baz" (.-hash js/location))) ;; TODO: Figure out why this is failing (history.length === 1)
+             (println "2" (.-hash js/location))
+             ;;(is (= "#!?bar=baz" (.-hash js/location))) ;; TODO: Figure out why this is failing (history.length === 1)
 
              (pp/send-command! [:receiver :receive] :receiver-payload)
              (delay-pipeline 1)
@@ -169,22 +169,20 @@
                     :html-element target-el}]
            (app-state/start! app))))
 
-(defn cancelable-promise [called-atom]
-  (p/promise (fn [resolve reject on-cancel]
-               (when (fn? on-cancel) (on-cancel #(swap! called-atom inc)))
-               (js/setTimeout resolve 50))))
-
 (defn make-exclusive-pipeline-controller [called-atom done]
   (pp-controller/constructor
    (fn [_] true)
    {:start (pipeline! [value app-db]
              (pp/execute! :exclusive true)
+             (delay-pipeline 1)
              (pp/execute! :exclusive true)
+             (delay-pipeline 1)
              (pp/execute! :exclusive true))
     :exclusive (pp/exclusive
                 (pipeline! [value app-db]
-                  (cancelable-promise called-atom)
-                  (is (= 2 @called-atom))
+                  (swap! called-atom inc)
+                  (delay-pipeline 50)
+                  (is (= 3 @called-atom))
                   (pp/commit! (assoc-in app-db [:kv :count] (inc (or (get-in app-db [:kv :count]) 0))))
                   (is (= 1 (get-in app-db [:kv :count])))
                   (done)))}))
@@ -198,6 +196,34 @@
                _ (js/setTimeout done 9000)]
            (app-state/start! app))))
 
+
+(defn make-nested-exclusive-pipeline-controller [called-atom done]
+  (pp-controller/constructor
+   (fn [_] true)
+   {:start (pipeline! [value app-db]
+             (pp/execute! :exclusive true)
+             (delay-pipeline 10)
+             (pp/execute! :exclusive true)
+             (delay-pipeline 10)
+             (pp/execute! :exclusive true))
+    :exclusive (pp/exclusive
+                (pipeline! [value app-db]
+                  (swap! called-atom inc)
+                  (pipeline! [value app-db]
+                    (delay-pipeline 50)
+                    (is (= 3 @called-atom))
+                    (pp/commit! (assoc-in app-db [:kv :count] (inc (or (get-in app-db [:kv :count]) 0))))
+                    (is (= 1 (get-in app-db [:kv :count])))
+                    (done))))}))
+
+(deftest nested-exclusive-pipeline
+  (async done
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:basic (make-nested-exclusive-pipeline-controller (atom 0) done)}
+                    :components  app-components
+                    :html-element target-el}
+               _ (js/setTimeout done 9000)]
+           (app-state/start! app))))
 
 (defn run-pipeline-breaks-into-rescue-if-pipeline-doesnt-exist [done]
   (pp-controller/constructor

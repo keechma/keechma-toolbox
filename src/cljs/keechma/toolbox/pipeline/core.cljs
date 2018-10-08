@@ -1,7 +1,6 @@
 (ns keechma.toolbox.pipeline.core
   (:require [cljs.core.async :refer [<! chan put!]]
             [promesa.core :as p]
-            [promesa.impl :refer [Promise]]
             [keechma.controller :as controller])
   (:require-macros [cljs.core.async.macros :refer [go-loop]]))
 
@@ -151,7 +150,7 @@ Runs multiple sideffects sequentially:
     :else (->Error :default nil err nil)))
 
 (defn ^:private is-promise? [val]
-  (= Promise (type val)))
+  (= val (p/promise val)))
 
 (defn ^:private promise->chan [promise]
   (let [promise-chan (chan)]
@@ -165,13 +164,13 @@ Runs multiple sideffects sequentially:
 
 (declare run-pipeline)
 
-(defn ^:private action-ret-val [action ctrl context app-db-atom value error]
+(defn ^:private action-ret-val [action ctrl context app-db-atom value error running?-atom]
   (try
     (let [ret (if (nil? error) (action value @app-db-atom context) (action value @app-db-atom context error))
           ret-val (:val ret)
           ret-repr (:repr ret)]
       (if (:pipeline? (meta ret-val))
-        {:value (ret-val ctrl app-db-atom value)
+        {:value (ret-val ctrl app-db-atom value running?-atom)
          :promise? true}
         {:value ret-val
          :repr ret-repr
@@ -185,9 +184,6 @@ Runs multiple sideffects sequentially:
 (defn ^:private extract-nil [value]
   (if (= ::nil value) nil value))
 
-(defn ^:private pending-and-cancelable? [promise]
-  (and (p/pending? promise) (fn? (.-cancel promise))))
-
 (defn call-sideffect [sideffect ctrl app-db-atom]
   (try
     {:value (call! sideffect ctrl app-db-atom)
@@ -196,78 +192,79 @@ Runs multiple sideffects sequentially:
       {:value err
        :error? true})))
 
-(defn ^:private run-pipeline [pipeline ctrl app-db-atom value]
-  (let [{:keys [begin rescue]} pipeline
-        current-promise (atom nil)
-        context (controller/context ctrl)]
-    (p/promise
-     (fn [resolve reject on-cancel]
-       (when (fn? on-cancel)
-         (on-cancel (fn []
-                      (let [c @current-promise]
-                        (when (pending-and-cancelable? c)
-                          (.cancel c))))))
-       (go-loop [block :begin
-                 actions begin
-                 prev-value value
-                 error nil]
-         (if (not (seq actions))
-           (resolve prev-value)
-           (let [next (first actions)
-                 {:keys [value promise? repr]} (action-ret-val next ctrl context app-db-atom prev-value error)
-                 sideffect? (satisfies? ISideffect value)]
-             (when promise?
-               (reset! current-promise value))
-             ;;(when repr (println "STARTING" repr))
-             (let [resolved-value (if promise? (extract-nil (<! (promise->chan value))) value)
-                   error? (instance? Error resolved-value)]
-               ;;(when repr (println "ENDING" repr))
-               (when (and promise? sideffect?)
-                 (throw (ex-info (:async-sideffect pipeline-errors) {:type ::pipeline-error})))
-               (if sideffect?
-                 (let [{:keys [value error?]} (call-sideffect resolved-value ctrl app-db-atom)
-                       resolved-value (if (is-promise? value) (<! (promise->chan value)) value)]
-                   (cond
-                     (and error? (= block :begin))
-                     (if (seq rescue)
-                       (recur :rescue rescue prev-value value)
-                       (reject (or (:payload value) value)))
-                     
-                     (and error? (= block :rescue))
-                     (reject (or (:payload value) value))
-                     
-                     :else
-                     (recur block (rest actions) prev-value error)))
-                 (cond 
-                   (= ::break resolved-value)
-                   (resolve ::break)
+(defn ^:private run-pipeline
+  ([pipeline ctrl app-db-atom value] (run-pipeline pipeline ctrl app-db-atom value (atom true)))
+  ([pipeline ctrl app-db-atom value running?-atom]
+   (let [{:keys [begin rescue]} pipeline
+         current-promise (atom nil)
+         context (controller/context ctrl)]
+     (p/promise
+      (fn [resolve reject]
+        (go-loop [block :begin
+                  actions begin
+                  prev-value value
+                  error nil]
+          (if (or (not (seq actions))
+                  (not @running?-atom))
+            (resolve prev-value)
+            (let [next (first actions)
+                  {:keys [value promise? repr]} (action-ret-val next ctrl context app-db-atom prev-value error running?-atom)
+                  sideffect? (satisfies? ISideffect value)] 
+              ;;(when repr (println "STARTING" repr))
+              (let [resolved-value (if promise? (extract-nil (<! (promise->chan value))) value)
+                    error? (instance? Error resolved-value)]
+                ;;(when repr (println "ENDING" repr))
+                (when (and promise? sideffect?)
+                  (throw (ex-info (:async-sideffect pipeline-errors) {:type ::pipeline-error})))
+                (if sideffect?
+                  (let [{:keys [value error?]} (call-sideffect resolved-value ctrl app-db-atom)
+                        resolved-value (if (is-promise? value) (<! (promise->chan value)) value)]
+                    (cond
+                      (and error? (= block :begin))
+                      (if (seq rescue)
+                        (recur :rescue rescue prev-value value)
+                        (reject (or (:payload value) value)))
+                      
+                      (and error? (= block :rescue))
+                      (reject (or (:payload value) value))
+                      
+                      :else
+                      (recur block (rest actions) prev-value error)))
+                  (cond 
+                    (= ::break resolved-value)
+                    (resolve ::break)
 
-                   (and error? (= block :begin))
-                   (if (seq rescue)
-                     (recur :rescue rescue prev-value resolved-value)
-                     (reject (or (:payload resolved-value) resolved-value)))
-                   
-                   (and error? (= block :rescue)
-                        (not= error resolved-value))
-                   (reject (or (:payload resolved-value) resolved-value))
+                    (and error? (= block :begin))
+                    (if (seq rescue)
+                      (recur :rescue rescue prev-value resolved-value)
+                      (reject (or (:payload resolved-value) resolved-value)))
+                    
+                    (and error? (= block :rescue)
+                         (not= error resolved-value))
+                    (reject (or (:payload resolved-value) resolved-value))
 
-                   (and error? (= block :rescue)
-                        (= error resolved-value))
-                   (reject (or (:payload error) error))
+                    (and error? (= block :rescue)
+                         (= error resolved-value))
+                    (reject (or (:payload error) error))
 
-                   :else
-                   (recur block
-                          (rest actions)
-                          (if (nil? resolved-value) prev-value resolved-value)
-                          error)))))))))))
+                    :else
+                    (recur block
+                           (rest actions)
+                           (if (nil? resolved-value) prev-value resolved-value)
+                           error))))))))))))
 
 (defn ^:private make-pipeline [pipeline]
   (with-meta (partial run-pipeline pipeline) {:pipeline? true}))
 
-(defn ^:private exclusive [pipeline]
-  (let [current (atom nil)]
+(defn ^:private make-running-derefable [current$ id]
+  (reify IDeref
+    (-deref [_]
+      (= id @current$))))
+
+(defn exclusive [pipeline]
+  (let [current$ (atom nil)]
     (fn [ctrl app-db-atom value]
-      (when-let [c @current]
-        (when (pending-and-cancelable? c)
-          (.cancel c)))
-      (reset! current (pipeline ctrl app-db-atom value)))))
+      (let [current @current$
+            new-id (str (gensym :pipeline))]
+        (reset! current$ new-id)
+        (pipeline ctrl app-db-atom value (make-running-derefable current$ new-id))))))
