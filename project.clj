@@ -1,13 +1,13 @@
-(defproject keechma/toolbox "0.1.17"
+(defproject keechma/toolbox "0.1.18"
   :description "Keechma Toolbox"
   :dependencies [[org.clojure/clojure "1.9.0"]
-                 [org.clojure/clojurescript "1.10.312"]
+                 [org.clojure/clojurescript "1.10.339"]
                  [reagent "0.7.0" :exclusions [cljsjs/react cljsjs/react-dom]]
                  [cljsjs/react-with-addons "15.6.1-0"]
                  [cljsjs/react-dom "15.6.1-0" :exclusions [cljsjs/react]]
                  [cljsjs/react-dom-server "15.6.1-0" :exclusions [cljsjs/react]]
                  [binaryage/devtools "0.8.2"]
-                 [keechma "0.3.10" :exclusions [cljsjs/react-with-addons]]
+                 [keechma "0.3.13" :exclusions [cljsjs/react-with-addons]]
                  [garden "1.3.2"]
                  [funcool/promesa "1.8.1"]
                  [keechma/forms "0.1.2"]
