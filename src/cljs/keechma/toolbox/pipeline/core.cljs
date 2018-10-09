@@ -1,7 +1,8 @@
 (ns keechma.toolbox.pipeline.core
   (:require [cljs.core.async :refer [<! chan put!]]
             [promesa.core :as p]
-            [keechma.controller :as controller])
+            [keechma.controller :as controller]
+            [medley.core :refer [dissoc-in]])
   (:require-macros [cljs.core.async.macros :refer [go-loop]]))
 
 (defrecord Error [type message payload cause])
@@ -10,33 +11,33 @@
   (->Error type nil payload nil))
 
 (defprotocol ISideffect
-  (call! [this controller app-db-atom]))
+  (call! [this controller app-db-atom pipeline$]))
 
 (defrecord CommitSideffect [value cb]
   ISideffect
-  (call! [this _ app-db-atom]
+  (call! [this _ app-db-atom _]
     (let [cb (:cb this)]
       (reset! app-db-atom (:value this))
       (when cb (cb)))))
 
 (defrecord SendCommandSideffect [command payload]
   ISideffect
-  (call! [this controller _]
+  (call! [this controller _ _]
     (controller/send-command controller (:command this) (:payload this))))
 
 (defrecord BroadcastSideffect [command payload]
   ISideffect
-  (call! [this controller _]
+  (call! [this controller _ _]
     (controller/broadcast controller (:command this) (:payload this))))
 
 (defrecord ExecuteSideffect [command payload]
   ISideffect
-  (call! [this controller _]
+  (call! [this controller _ _]
     (controller/execute controller (:command this) (:payload this))))
 
 (defrecord RedirectSideffect [params action]
   ISideffect
-  (call! [this controller _]
+  (call! [this controller _ _]
     (let [action (:action this)
           params (:params this)]
       (if action
@@ -45,23 +46,50 @@
 
 (defrecord DoSideffect [sideffects]
   ISideffect
-  (call! [this controller app-db-atom]
+  (call! [this controller app-db-atom pipelines$]
     (let [sideffects (:sideffects this)]
       (doseq [s sideffects]
-        (call! s controller app-db-atom)))))
+        (call! s controller app-db-atom pipelines$)))))
 
 (defrecord RunPipelineSideffect [pipeline-key args]
   ISideffect
-  (call! [this controller app-db-atom]
+  (call! [this controller app-db-atom pipelines$]
     (let [pipeline (get-in controller [:pipelines pipeline-key])]
       (if pipeline
-        (pipeline controller app-db-atom args)
+        (pipeline controller app-db-atom args pipelines$)
         (throw (ex-info (str "Pipeline " pipeline-key " doesn't exist") {:pipeline pipeline-key}))))))
 
 (defrecord RerouteSideffect []
   ISideffect
-  (call! [_ controller _]
+  (call! [_ controller _ _]
     (controller/reroute controller)))
+
+(defn prepare-running-pipelines [pipelines]
+  (reduce-kv
+   (fn [acc name ps]
+     (concat acc (mapv (fn [[id p]] {:id [name id] :args (:args p)}) ps)))
+   [] pipelines))
+
+(defrecord WaitPipelinesSideffect [pipeline-filter]
+  ISideffect
+  (call! [_ _ _ pipelines$]
+    (let [running-pipelines @pipelines$
+          filtered (pipeline-filter (prepare-running-pipelines running-pipelines))]
+      (when (seq filtered)
+        (let [promises (map #(get-in running-pipelines (conj (:id %) :promise)) filtered)]
+          (->> (p/all promises)
+               (p/map (fn [_] nil))
+               (p/error (fn [_] nil))))))))
+
+(defrecord CancelPipelinesSideffect [pipeline-filter]
+  ISideffect
+  (call! [_ _ _ pipelines$]
+    (let [running-pipelines @pipelines$
+          filtered (pipeline-filter (prepare-running-pipelines running-pipelines))]
+      (when (seq filtered)
+        (reset! pipelines$
+                (reduce (fn [acc v] (dissoc-in acc (:id v))) running-pipelines filtered))
+        nil))))
 
 (defn commit!
   "
@@ -87,8 +115,9 @@ Execute pipeline sideffect.
 
 Accepts `command` and `payload` arguments. Use this if you want to execute a command on the current controller.
 "
-  [command payload]
-  (->ExecuteSideffect command payload))
+  ([command] (execute! command nil))
+  ([command payload]
+   (->ExecuteSideffect command payload)))
 
 (defn send-command!
   "
@@ -97,8 +126,9 @@ Send command pipeline sideffect.
 Accepts `command` and `payload` arguments. Command should be a vector where first element is the controller topic, and the second
 element is the command name. 
 "
-  [command payload]
-  (->SendCommandSideffect command payload))
+  ([command] (send-command! command nil))
+  ([command payload]
+   (->SendCommandSideffect command payload)))
 
 (defn broadcast!
   "
@@ -144,13 +174,21 @@ Runs multiple sideffects sequentially:
 (defn reroute! []
   (->RerouteSideffect))
 
+(defn wait-pipelines! [pipeline-filter]
+  (->WaitPipelinesSideffect pipeline-filter))
+
+(defn cancel-pipelines! [pipeline-filter]
+  (->CancelPipelinesSideffect pipeline-filter))
+
 (defn ^:private process-error [err]
   (cond
     (instance? Error err) err
     :else (->Error :default nil err nil)))
 
 (defn ^:private is-promise? [val]
-  (= val (p/promise val)))
+  (if (or (instance? js/Error val) (instance? Error val))
+    false
+    (= val (p/promise val))))
 
 (defn ^:private promise->chan [promise]
   (let [promise-chan (chan)]
@@ -164,13 +202,13 @@ Runs multiple sideffects sequentially:
 
 (declare run-pipeline)
 
-(defn ^:private action-ret-val [action ctrl context app-db-atom value error running?-atom]
+(defn ^:private action-ret-val [action ctrl context app-db-atom value error pipelines$]
   (try
     (let [ret (if (nil? error) (action value @app-db-atom context) (action value @app-db-atom context error))
           ret-val (:val ret)
           ret-repr (:repr ret)]
       (if (:pipeline? (meta ret-val))
-        {:value (ret-val ctrl app-db-atom value running?-atom)
+        {:value (ret-val ctrl app-db-atom value pipelines$)
          :promise? true}
         {:value ret-val
          :repr ret-repr
@@ -184,20 +222,22 @@ Runs multiple sideffects sequentially:
 (defn ^:private extract-nil [value]
   (if (= ::nil value) nil value))
 
-(defn call-sideffect [sideffect ctrl app-db-atom]
+(defn call-sideffect [sideffect ctrl app-db-atom pipelines$]
   (try
-    {:value (call! sideffect ctrl app-db-atom)
+    {:value (call! sideffect ctrl app-db-atom pipelines$)
      :error? false}
     (catch :default err
       {:value err
        :error? true})))
 
 (defn ^:private run-pipeline
-  ([pipeline ctrl app-db-atom value] (run-pipeline pipeline ctrl app-db-atom value (atom true)))
-  ([pipeline ctrl app-db-atom value running?-atom]
+  ([pipeline ctrl app-db-atom value]
+   (run-pipeline ctrl app-db-atom value nil))
+  ([pipeline ctrl app-db-atom value pipelines$]
    (let [{:keys [begin rescue]} pipeline
          current-promise (atom nil)
-         context (controller/context ctrl)]
+         context (controller/context ctrl)
+         running-check-path (flatten [(:pipeline/running ctrl) :running?])]
      (p/promise
       (fn [resolve reject]
         (go-loop [block :begin
@@ -205,10 +245,10 @@ Runs multiple sideffects sequentially:
                   prev-value value
                   error nil]
           (if (or (not (seq actions))
-                  (not @running?-atom))
+                  (and (not (nil? pipelines$)) (not (get-in @pipelines$ running-check-path))))
             (resolve prev-value)
             (let [next (first actions)
-                  {:keys [value promise? repr]} (action-ret-val next ctrl context app-db-atom prev-value error running?-atom)
+                  {:keys [value promise? repr]} (action-ret-val next ctrl context app-db-atom prev-value error pipelines$)
                   sideffect? (satisfies? ISideffect value)] 
               ;;(when repr (println "STARTING" repr))
               (let [resolved-value (if promise? (extract-nil (<! (promise->chan value))) value)
@@ -217,14 +257,14 @@ Runs multiple sideffects sequentially:
                 (when (and promise? sideffect?)
                   (throw (ex-info (:async-sideffect pipeline-errors) {:type ::pipeline-error})))
                 (if sideffect?
-                  (let [{:keys [value error?]} (call-sideffect resolved-value ctrl app-db-atom)
+                  (let [{:keys [value error?]} (call-sideffect resolved-value ctrl app-db-atom pipelines$)
                         resolved-value (if (is-promise? value) (<! (promise->chan value)) value)]
                     (cond
                       (and error? (= block :begin))
                       (if (seq rescue)
                         (recur :rescue rescue prev-value value)
                         (reject (or (:payload value) value)))
-                      
+                     
                       (and error? (= block :rescue))
                       (reject (or (:payload value) value))
                       
@@ -256,15 +296,11 @@ Runs multiple sideffects sequentially:
 (defn ^:private make-pipeline [pipeline]
   (with-meta (partial run-pipeline pipeline) {:pipeline? true}))
 
-(defn ^:private make-running-derefable [current$ id]
-  (reify IDeref
-    (-deref [_]
-      (= id @current$))))
-
 (defn exclusive [pipeline]
-  (let [current$ (atom nil)]
-    (fn [ctrl app-db-atom value]
-      (let [current @current$
-            new-id (str (gensym :pipeline))]
-        (reset! current$ new-id)
-        (pipeline ctrl app-db-atom value (make-running-derefable current$ new-id))))))
+  (let [pipeline-meta (meta pipeline)]
+    (with-meta
+      (fn [ctrl app-db-atom value pipelines$]
+        (let [[pipeline-name pipeline-id] (:pipeline/running ctrl)]
+          (swap! pipelines$ assoc pipeline-name {})
+          (pipeline ctrl app-db-atom value pipelines$)))
+      pipeline-meta)))

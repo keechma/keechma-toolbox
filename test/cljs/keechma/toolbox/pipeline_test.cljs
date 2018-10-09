@@ -4,7 +4,8 @@
             [keechma.toolbox.pipeline.core :as pp :refer-macros [pipeline!]]
             [keechma.app-state :as app-state]
             [promesa.core :as p]
-            [cljs.core.async :refer [<! >! chan close! put! alts! timeout]])
+            [cljs.core.async :refer [<! >! chan close! put! alts! timeout]]
+            [keechma.toolbox.tasks :as t])
   (:require-macros [cljs.core.async.macros :as m :refer [go alt!]]))
 
 
@@ -234,7 +235,9 @@
              (done)
              (rescue! [error]
                (is true)
-               (done)))}))
+               "-"
+               (js/setTimeout #(done) 10)
+               ))}))
 
 (deftest run-pipeline-breaks-into-rescue-if-pipeline-doesnt-exist-test
   (async done
@@ -330,3 +333,150 @@
              (<! (timeout 10))
              (is (= 1 @log))
              (done)))))
+
+(defn wait-pipeline-controller []
+  (pp-controller/constructor
+   (constantly true)
+   {:on-start (pipeline! [value app-db]
+                (pp/execute! :runner)
+                (pp/execute! :waiter))
+    :runner (pipeline! [value app-db]
+              (delay-pipeline 50)
+              (pp/commit! (assoc-in app-db [:kv :runner] true)))
+    :waiter (pipeline! [value app-db]
+              (pp/wait-pipelines!
+               (fn [pipelines]
+                 (filter
+                  (fn [p]
+                    (let [[name _] (:id p)]
+                      (= name :runner)))
+                  pipelines)))
+              (is (true? (get-in app-db [:kv :runner]))))}))
+
+(deftest wait-pipeline
+  (async done
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:waiter (wait-pipeline-controller)} 
+                    :components app-components
+                    :html-element target-el}]
+           (app-state/start! app)
+           (go
+             (<! (timeout 100))
+             (done)))))
+
+
+(defn cancel-pipeline-controller []
+  (pp-controller/constructor
+   (constantly true)
+   {:on-start (pipeline! [value app-db]
+                (pp/execute! :runner)
+                (pp/execute! :waiter))
+    :runner (pipeline! [value app-db]
+              (delay-pipeline 10)
+              (pp/commit! (assoc-in app-db [:kv :runner] true)))
+    :waiter (pipeline! [value app-db]
+              (pp/cancel-pipelines!
+               (fn [pipelines]
+                 (filter
+                  (fn [p]
+                    (let [[name _] (:id p)]
+                      (= name :runner)))
+                  pipelines)))
+              (delay-pipeline 50)
+              (is (nil? (get-in app-db [:kv :runner]))))}))
+
+(deftest cancel-pipeline
+  (async done
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:canceler (cancel-pipeline-controller)} 
+                    :components app-components
+                    :html-element target-el}]
+           (app-state/start! app)
+           (go
+             (<! (timeout 100))
+             (done)))))
+
+(defn blocking-task-controller []
+  (pp-controller/constructor
+   (constantly true)
+   {:on-start (pipeline! [value app-db]
+                (pp/execute! :runner)
+                (pp/execute! :waiter))
+    :runner (pipeline! [value app-db]
+              (t/blocking-task!
+               t/app-db-change-producer
+               :runner-task
+               (fn [{:keys [id]} app-db]
+                 (if (get-in app-db [:kv :continue-runner])
+                   (t/stop-task (assoc-in app-db [:kv :runner] true) id)
+                   app-db)))
+              (is false "Shouldn't be here"))
+    :waiter (pipeline! [value app-db]
+              (delay-pipeline 1)
+              (pp/commit! (assoc-in app-db [:kv :something] true))
+              (delay-pipeline 1)
+              (pp/cancel-pipelines!
+               (fn [pipelines]
+                 (filter
+                  (fn [p]
+                    (let [[name _] (:id p)]
+                      (= name :runner)))
+                  pipelines)))
+              (pp/commit! (assoc-in app-db [:kv :continue-runner] true))
+              (delay-pipeline 1)
+              (is (nil? (get-in app-db [:kv :runner]))))}))
+
+(deftest blocking-task-cancellation-on-pipeline-cancellation
+  (async done
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:blocker (blocking-task-controller)} 
+                    :components app-components
+                    :html-element target-el}]
+           (app-state/start! app)
+           (go
+             (<! (timeout 100))
+             (done)))))
+
+
+(defn non-blocking-task-controller []
+  (pp-controller/constructor
+   (constantly true)
+   {:on-start (pipeline! [value app-db]
+                (pp/execute! :runner)
+                (pp/execute! :waiter))
+    :runner (pipeline! [value app-db]
+              (t/non-blocking-task!
+               t/app-db-change-producer
+               :runner-task
+               (fn [{:keys [id]} app-db]
+                 (if (get-in app-db [:kv :continue-runner])
+                   (t/stop-task (assoc-in app-db [:kv :runner] true) id)
+                   app-db))))
+    :waiter (pipeline! [value app-db]
+              (delay-pipeline 1)
+              (pp/commit! (assoc-in app-db [:kv :something] true))
+              (delay-pipeline 1)
+              (pp/cancel-pipelines!
+               (fn [pipelines]
+                 (filter
+                  (fn [p]
+                    (let [[name _] (:id p)]
+                      (= name :runner)))
+                  pipelines)))
+              (pp/commit! (assoc-in app-db [:kv :continue-runner] true))
+              (delay-pipeline 1)
+              (is (nil? (get-in app-db [:kv :runner]))))}))
+
+(deftest non-blocking-task-cancellation-on-pipeline-cancellation
+  (async done
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:blocker (non-blocking-task-controller)} 
+                    :components app-components
+                    :html-element target-el}]
+           (app-state/start! app)
+           (go
+             (<! (timeout 100))
+             (done)))))
+
+
+

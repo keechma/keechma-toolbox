@@ -107,52 +107,71 @@
         current-version (:version task)]
     (not (nil? (get-in task [:states current-version])))))
 
-(defn task-loop [{:keys [producer reducer ctrl app-db-atom value resolve reject id]}]
+(defn task-loop [{:keys [producer reducer ctrl app-db-atom value resolve reject id pipelines$]}]
   (let [runner-chan (chan)
+        pipelines-watcher-key (keyword (gensym :w))
+        parent-pipeline-id (:pipeline/running ctrl)
         {:keys [stopper version]} (register-task! app-db-atom id producer reducer resolve runner-chan)]
+
+    (add-watch pipelines$ pipelines-watcher-key
+               (fn [_ _ _ new-val]
+                 (when-not (get-in new-val (conj parent-pipeline-id :running?))
+                   (reset! app-db-atom (finish-task! @app-db-atom id ::cancelled)))))
+
     (let [started-at (.getTime (js/Date.))]
       (go-loop [times-invoked 0]
-        (when-let [runner-value (<! runner-chan)]
-              (let [app-db @app-db-atom
-                    reducer-result (reducer {:times-invoked times-invoked
-                                             :started-at started-at
-                                             :id id
-                                             :value runner-value
-                                             :state ::running}
-                                            app-db)
-                    task-state-update? (instance? TaskStateUpdate reducer-result)]
-                (if task-state-update?
-                  (reset! app-db-atom (finish-task! (:app-db reducer-result) (:id reducer-result) (:state reducer-result)))
-                  (do
-                    (when (not= app-db-atom reducer-result)
-                      (reset! app-db-atom reducer-result))
-                    (recur (inc times-invoked))))))))))
+        (if-let [runner-value (<! runner-chan)]
+          (let [app-db @app-db-atom
+                reducer-result (reducer {:times-invoked times-invoked
+                                         :started-at started-at
+                                         :id id
+                                         :value runner-value
+                                         :state ::running}
+                                        app-db)
+                task-state-update? (instance? TaskStateUpdate reducer-result)]
+            (if task-state-update?
+              (do
+                (remove-watch pipelines$ pipelines-watcher-key)
+                (reset! app-db-atom (finish-task! (:app-db reducer-result) (:id reducer-result) (:state reducer-result))))
+              (do
+                (when (not= app-db-atom reducer-result)
+                  (reset! app-db-atom reducer-result))
+                (recur (inc times-invoked)))))
+          (remove-watch pipelines$ pipelines-watcher-key))))))
 
 
-(defn blocking-task-producer [producer id reducer ctrl app-db-atom value]
-  (p/promise (fn [resolve reject]
-               (task-loop {:reducer reducer
-                           :producer producer
-                           :ctrl ctrl
-                           :app-db-atom app-db-atom
-                           :value value
-                           :resolve resolve
-                           :reject reject
-                           :id id}))))
+(defn blocking-task-producer
+  ([producer id reducer ctrl app-db-atom value]
+   (blocking-task-producer producer id reducer ctrl app-db-atom value nil))
+  ([producer id reducer ctrl app-db-atom value pipelines$]
+   (p/promise (fn [resolve reject]
+                (task-loop {:reducer reducer
+                            :producer producer
+                            :ctrl ctrl
+                            :app-db-atom app-db-atom
+                            :value value
+                            :resolve resolve
+                            :reject reject
+                            :id id
+                            :pipelines$ pipelines$})))))
 
 (defn blocking-task! [producer id reducer]
   (with-meta (partial blocking-task-producer producer id reducer) {:pipeline? true}))
 
-(defn non-blocking-task-producer [producer id reducer ctrl app-db-atom value]
-  (task-loop {:reducer reducer
-              :producer producer
-              :ctrl ctrl
-              :app-db-atom app-db-atom
-              :value value
-              :resolve identity
-              :reject identity
-              :id id})
-  nil)
+(defn non-blocking-task-producer
+  ([producer id reducer ctrl app-db-atom value]
+   (non-blocking-task-producer producer id reducer ctrl app-db-atom value nil))
+  ([producer id reducer ctrl app-db-atom value pipelines$]
+   (task-loop {:reducer reducer
+               :producer producer
+               :ctrl ctrl
+               :app-db-atom app-db-atom
+               :value value
+               :resolve identity
+               :reject identity
+               :id id
+               :pipelines$ pipelines$})
+   nil))
 
 (defn non-blocking-task! [producer id reducer]
   (with-meta (partial non-blocking-task-producer producer id reducer) {:pipeline? true}))
