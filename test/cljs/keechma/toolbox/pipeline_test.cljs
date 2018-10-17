@@ -311,15 +311,15 @@
 
 (defn nested-pipeline-rescue-block-controller [log]
   (pp-controller/constructor
-      (constantly true)
-      {:on-start (pipeline! [value app-db]
-                   (pipeline! [value app-db]
-                     (throwing-fn "#1")
-                     (rescue! [error]
-                       (throwing-fn "#2")))
-                   (rescue! [error]
-                     (swap! log inc)
-                     (is (= "#2" (.-message (:payload error))))))}))
+   (constantly true)
+   {:on-start (pipeline! [value app-db]
+                (pipeline! [value app-db]
+                  (throwing-fn "#1")
+                  (rescue! [error]
+                    (throwing-fn "#2")))
+                (rescue! [error]
+                  (swap! log inc)
+                  (is (= "#2" (.-message (:payload error))))))}))
 
 (deftest nested-pipeline-rescue-block
   (async done
@@ -438,7 +438,7 @@
              (done)))))
 
 
-(defn non-blocking-task-controller []
+(defn non-blocking-task-cancellation-on-pipeline-cancellation-controller []
   (pp-controller/constructor
    (constantly true)
    {:on-start (pipeline! [value app-db]
@@ -470,7 +470,7 @@
 (deftest non-blocking-task-cancellation-on-pipeline-cancellation
   (async done
          (let [target-el (add-mount-target-el)
-               app {:controllers {:blocker (non-blocking-task-controller)} 
+               app {:controllers {:blocker (non-blocking-task-cancellation-on-pipeline-cancellation-controller)} 
                     :components app-components
                     :html-element target-el}]
            (app-state/start! app)
@@ -479,4 +479,28 @@
              (done)))))
 
 
+(defn non-blocking-task-controller []
+  (pp-controller/constructor
+   (constantly true)
+   {:on-start (pipeline! [value app-db]
+                (t/non-blocking-task!
+                 t/app-db-change-producer
+                 :runner-task
+                 (fn [{:keys [id]} app-db]
+                   (if (get-in app-db [:kv :continue-runner])
+                     (t/stop-task (assoc-in app-db [:kv :runner] true) id)
+                     app-db)))
+                (pp/commit! (assoc-in app-db [:kv :continue-runner] true))
+                (delay-pipeline 10)
+                (is (true? (get-in app-db [:kv :runner]))))}))
 
+(deftest non-blocking-task
+  (async done
+         (let [target-el (add-mount-target-el)
+               app {:controllers {:blocker (non-blocking-task-controller)} 
+                    :components app-components
+                    :html-element target-el}]
+           (app-state/start! app)
+           (go
+             (<! (timeout 100))
+             (done)))))
