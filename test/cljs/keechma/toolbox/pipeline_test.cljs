@@ -438,61 +438,23 @@
              (done)))))
 
 
-(defn non-blocking-task-cancellation-on-pipeline-cancellation-controller []
-  (pp-controller/constructor
-   (constantly true)
-   {:on-start (pipeline! [value app-db]
-                (pp/execute! :runner)
-                (pp/execute! :waiter))
-    :runner (pipeline! [value app-db]
-              (t/non-blocking-task!
-               t/app-db-change-producer
-               :runner-task
-               (fn [{:keys [id]} app-db]
-                 (if (get-in app-db [:kv :continue-runner])
-                   (t/stop-task (assoc-in app-db [:kv :runner] true) id)
-                   app-db))))
-    :waiter (pipeline! [value app-db]
-              (delay-pipeline 1)
-              (pp/commit! (assoc-in app-db [:kv :something] true))
-              (delay-pipeline 1)
-              (pp/cancel-pipelines!
-               (fn [pipelines]
-                 (filter
-                  (fn [p]
-                    (let [[name _] (:id p)]
-                      (= name :runner)))
-                  pipelines)))
-              (pp/commit! (assoc-in app-db [:kv :continue-runner] true))
-              (delay-pipeline 1)
-              (is (nil? (get-in app-db [:kv :runner]))))}))
-
-(deftest non-blocking-task-cancellation-on-pipeline-cancellation
-  (async done
-         (let [target-el (add-mount-target-el)
-               app {:controllers {:blocker (non-blocking-task-cancellation-on-pipeline-cancellation-controller)} 
-                    :components app-components
-                    :html-element target-el}]
-           (app-state/start! app)
-           (go
-             (<! (timeout 100))
-             (done)))))
-
-
 (defn non-blocking-task-controller []
   (pp-controller/constructor
    (constantly true)
    {:on-start (pipeline! [value app-db]
-                (t/non-blocking-task!
-                 t/app-db-change-producer
-                 :runner-task
-                 (fn [{:keys [id]} app-db]
-                   (if (get-in app-db [:kv :continue-runner])
-                     (t/stop-task (assoc-in app-db [:kv :runner] true) id)
-                     app-db)))
+                (pp/execute! :non-blocking-task) 
+                (delay-pipeline 10)
                 (pp/commit! (assoc-in app-db [:kv :continue-runner] true))
                 (delay-pipeline 10)
-                (is (true? (get-in app-db [:kv :runner]))))}))
+                (is (true? (get-in app-db [:kv :runner]))))
+    :non-blocking-task (pipeline! [value app-db]
+                         (t/non-blocking-task!
+                          t/app-db-change-producer
+                          :runner-task
+                          (fn [{:keys [id]} app-db]
+                            (if (get-in app-db [:kv :continue-runner])
+                              (t/stop-task (assoc-in app-db [:kv :runner] true) id)
+                              app-db))))}))
 
 (deftest non-blocking-task
   (async done

@@ -162,15 +162,18 @@
   ([producer id reducer ctrl app-db-atom value]
    (non-blocking-task-producer producer id reducer ctrl app-db-atom value nil))
   ([producer id reducer ctrl app-db-atom value pipelines$]
-   (task-loop {:reducer reducer
-               :producer producer
-               :ctrl ctrl
-               :app-db-atom app-db-atom
-               :value value
-               :resolve identity
-               :reject identity
-               :id id
-               :pipelines$ pipelines$})
+   (let [parent-pipeline-id (:pipeline/running ctrl)
+         running-path (conj parent-pipeline-id :running?)] 
+     (task-loop {:reducer reducer
+                 :producer producer
+                 :ctrl ctrl
+                 :app-db-atom app-db-atom
+                 :value value
+                 :resolve identity
+                 :reject identity
+                 :id id
+                 ;; Detach this task from the pipeline, it will continue running even if the pipeline is done or cancelled
+                 :pipelines$ (atom (assoc-in {} running-path true))}))
    nil))
 
 (defn non-blocking-task! [producer id reducer]
