@@ -1,8 +1,15 @@
 (ns keechma.toolbox.dataloader-test
   (:require [cljs.test :refer-macros [deftest testing is async]]
             [keechma.toolbox.dataloader.core :as core]
+            [keechma.toolbox.dataloader.app :as app]
             [promesa.core :as p]
-            [entitydb.core :as edb]))
+            [entitydb.core :as edb]
+            [cljs.core.async :refer [<! put! timeout]]
+            [keechma.app-state :as app-state]
+            [keechma.ui-component :as ui]
+            [keechma.toolbox.test-util :refer [make-container]]
+            [medley.core :refer [dissoc-in]])
+  (:require-macros [cljs.core.async.macros :refer [go]]))
 
 (defn promised-datasource
   ([] (promised-datasource nil))
@@ -129,7 +136,7 @@
                route {}]
            (->> (dataloader app-db-atom)
                 (p/map (fn []
-                         (is (= @app-db-atom
+                         (is (= (dissoc-in @app-db-atom [:kv :keechma.toolbox.dataloader.core/req-cache])
 
                                 {:kv {:keechma.toolbox.dataloader.core/pending #{},
                                       :keechma.toolbox.dataloader.core/dataloader 
@@ -174,7 +181,7 @@
     (async done
            (->> (dataloader app-db-atom)
                 (p/map (fn []
-                         (is (= @app-db-atom
+                         (is (= (dissoc-in @app-db-atom [:kv :keechma.toolbox.dataloader.core/req-cache])
                                 {:route {:data {:foo :bar}},
                                  :kv {:keechma.toolbox.dataloader.core/pending #{},
                                       :keechma.toolbox.dataloader.core/dataloader
@@ -202,7 +209,7 @@
                          (dataloader app-db-atom)))
                 (p/map (fn []
 
-                         (is (= @app-db-atom
+                         (is (= (dissoc-in @app-db-atom [:kv :keechma.toolbox.dataloader.core/req-cache])
                                 {:route {:data {:foo :baz}},
                                  :kv {:keechma.toolbox.dataloader.core/pending #{},
                                       :keechma.toolbox.dataloader.core/dataloader 
@@ -801,3 +808,159 @@
                 (p/error (fn [e]
                            (is (= :keechma.toolbox.dataloader.core/missing-datasource (:type (.-data e))))
                            (done)))))))
+
+(defn make-invalidation-datasources []
+  (let [call-count$ (atom {:current-user 1
+                           :users 1})]
+    {:current-user
+     {:target [:kv :user :current]
+      :loader (fn [reqs]
+                (map
+                 (fn [r]
+                   (let [call-count (or (:current-user @call-count$) 0)]
+                     (swap! call-count$ update :current-user inc)
+                     {:id 1 :call-count call-count}))
+                 reqs))
+      :params (fn [_ _ _] true)}
+     
+     :users
+     {:target [:kv :user :list]
+      :loader (fn [reqs]
+                (map
+                 (fn [r]
+                   (let [call-count (or (:users @call-count$) 0)]
+                     (swap! call-count$ update :users inc)
+                     [{:id 2 :call-count call-count}]))
+                 reqs))
+      :params (fn [_ _ _] true)}}))
+
+(deftest invalidation-datasources
+  (let [[c unmount] (make-container)
+        app (-> {:html-element c
+                 :components {:main (ui/constructor {:renderer (fn [ctx] [:div])})}}
+                (app/install (make-invalidation-datasources) {}))
+        app-state (app-state/start! app)
+        commands-chan (:commands-chan app-state)
+        app-db (:app-db app-state)]
+    (async done
+           (go
+             (<! (timeout 10))
+             (is (= {:current {:id 1 :call-count 1}
+                     :list [{:id 2 :call-count 1}]}
+                   (get-in @app-db [:kv :user])))
+            
+             
+             (put! commands-chan [[core/id-key :load-data] [:current-user]])
+             (<! (timeout 10))
+
+             (is (= {:current {:id 1 :call-count 2}
+                     :list [{:id 2 :call-count 1}]}
+                   (get-in @app-db [:kv :user])))
+
+             (put! commands-chan [[core/id-key :load-data] :all])
+             (<! (timeout 10))
+
+             (is (= {:current {:id 1 :call-count 3}
+                     :list [{:id 2 :call-count 2}]}
+                   (get-in @app-db [:kv :user])))
+            
+             (app-state/stop! app-state done)))))
+
+(defn make-cached-res-datasources []
+  (let [call-count$ (atom {:current-user 1
+                           :users 1
+                           :current-user-cache 0})]
+    {:current-user
+     {:target [:kv :user :current]
+      :loader (fn [reqs]
+                (map
+                 (fn [{:keys [params]}]
+                   (when params
+                     (let [call-count (or (:current-user @call-count$) 0)]
+                       (swap! call-count$ update :current-user inc)
+                       {:id 1 :call-count call-count})))
+                 reqs))
+      :params (fn [_ {:keys [id]} _]
+                (when id true))
+      :cache-valid? (fn [& args]
+                      (swap! call-count$ update :current-user-cache inc)
+                      (< (:current-user-cache @call-count$) 3))}
+     
+     :users
+     {:target [:kv :user :list]
+      :loader (fn [reqs]
+                (map
+                 (fn [{:keys [params]}]
+                   (when params
+                     (let [call-count (or (:users @call-count$) 0)]
+                       (swap! call-count$ update :users inc)
+                       [{:id 2 :call-count call-count}])))
+                 reqs))
+      :params (fn [_ {:keys [id]} _] (when-not id true))
+      :cache-valid? (constantly true)}}))
+
+(deftest cached-res-datasources
+  (async done
+         (let [cached-datasources (make-cached-res-datasources)
+               dataloader (core/make-dataloader cached-datasources)
+               app-db-atom (atom {:route {:data {}}})]
+           (go
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current nil
+                     :list [{:id 2 :call-count 1}]}
+                    (get-in @app-db-atom [:kv :user])))
+             (swap! app-db-atom assoc-in [:route :data :id] 1)
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current {:id 1 :call-count 1}
+                     :list nil}
+                    (get-in @app-db-atom [:kv :user])))
+             (swap! app-db-atom dissoc-in [:route :data :id])
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current nil
+                     :list [{:id 2 :call-count 1}]}
+                    (get-in @app-db-atom [:kv :user])))
+             (swap! app-db-atom assoc-in [:route :data :id] 1)
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current {:id 1 :call-count 1}
+                     :list nil}
+                    (get-in @app-db-atom [:kv :user])))
+             (dataloader app-db-atom {:invalid-datasources #{:current-user :users}})
+             (<! (timeout 10))
+             (is (= {:current {:id 1 :call-count 2}
+                     :list nil}
+                    (get-in @app-db-atom [:kv :user])))
+             (swap! app-db-atom dissoc-in [:route :data :id])
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current nil
+                     :list [{:id 2 :call-count 2}]}
+                    (get-in @app-db-atom [:kv :user])))
+             (swap! app-db-atom assoc-in [:route :data :id] 1)
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current {:id 1 :call-count 3}
+                     :list nil}
+                    (get-in @app-db-atom [:kv :user])))
+             (swap! app-db-atom dissoc-in [:route :data :id])
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current nil
+                     :list [{:id 2 :call-count 2}]}
+                    (get-in @app-db-atom [:kv :user])))
+             (swap! app-db-atom assoc-in [:route :data :id] 1)
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current {:id 1 :call-count 4}
+                     :list nil}
+                    (get-in @app-db-atom [:kv :user])))
+             (swap! app-db-atom dissoc-in [:route :data :id])
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:current nil
+                     :list [{:id 2 :call-count 2}]}
+                    (get-in @app-db-atom [:kv :user])))
+             (done)))))

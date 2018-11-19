@@ -28,7 +28,7 @@
       (when (not= c dataloader/id-key)
         (controller/send-command controller [c command] payload)))))
 
-(defrecord Controller [dataloader])
+(defrecord Controller [datasources dataloader])
 
 (defmethod controller/params Controller [this route-params]
   (:data route-params))
@@ -44,7 +44,9 @@
           (swap! app-db-atom assoc-in dataloader-status-key :pending)
           (broadcast this @app-db-atom ::status-change :pending)
           (->> (d app-db-atom {:context context
-                               :invalid-datasources (set invalid-datasources)})
+                               :invalid-datasources (if (= :all invalid-datasources)
+                                                      (set (keys (:datasources this)))
+                                                      (set invalid-datasources))})
                (p/map (fn []
                         (swap! app-db-atom assoc-in dataloader-status-key :loaded)
                         (broadcast this @app-db-atom ::status-change :loaded)))
@@ -66,7 +68,7 @@
 (defn constructor
   "Dataloader controller constructor"
   [datasources edb-schema]
-  (->Controller (dataloader/make-dataloader datasources edb-schema)))
+  (->Controller datasources (dataloader/make-dataloader datasources edb-schema)))
 
 (defn register "
 
