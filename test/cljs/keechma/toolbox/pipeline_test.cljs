@@ -466,3 +466,29 @@
            (go
              (<! (timeout 100))
              (done)))))
+
+(defrecord MinimalPipelineController [])
+
+(def minimal-pipeline
+  (pipeline! [value app-db]
+    1))
+
+(deftest minimal-pipeline-test-1
+  (async done
+         (->> (minimal-pipeline (->MinimalPipelineController) (atom nil) nil)
+              (p/map (fn [res]
+                       (is (= res 1))
+                       (done)))
+              (p/error (fn [err]
+                         (is (= true false))
+                         (done))))))
+
+(deftest minimal-pipeline-test-2
+  (async done
+         (->> (minimal-pipeline (->MinimalPipelineController) (atom nil) nil nil)
+              (p/map (fn [res]
+                       (is (= res 1))
+                       (done)))
+              (p/error (fn [err]
+                         (is (= true false))
+                         (done))))))

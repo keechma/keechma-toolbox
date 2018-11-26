@@ -11,7 +11,7 @@
   (->Error type nil payload nil))
 
 (defprotocol ISideffect
-  (call! [this controller app-db-atom pipeline$]))
+  (call! [this controller app-db-atom pipelines$]))
 
 (defrecord CommitSideffect [value cb]
   ISideffect
@@ -230,9 +230,14 @@ Runs multiple sideffects sequentially:
       {:value err
        :error? true})))
 
+(defn pipeline-running? [pipelines$ running-check-path]
+  (if (nil? pipelines$)
+    true
+    (get-in @pipelines$ running-check-path)))
+
 (defn ^:private run-pipeline
   ([pipeline ctrl app-db-atom value]
-   (run-pipeline ctrl app-db-atom value nil))
+   (run-pipeline pipeline ctrl app-db-atom value nil))
   ([pipeline ctrl app-db-atom value pipelines$]
    (let [{:keys [begin rescue]} pipeline
          current-promise (atom nil)
@@ -245,7 +250,7 @@ Runs multiple sideffects sequentially:
                   prev-value value
                   error nil]
           (if (or (not (seq actions))
-                  (and (not (nil? pipelines$)) (not (get-in @pipelines$ running-check-path))))
+                  (not (pipeline-running? pipelines$ running-check-path)))
             (resolve prev-value)
             (let [next (first actions)
                   {:keys [value promise? repr]} (action-ret-val next ctrl context app-db-atom prev-value error pipelines$)
