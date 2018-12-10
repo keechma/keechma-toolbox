@@ -4,9 +4,10 @@
 
 (deftest mcmd
   (let [foo "bar"
-        app-db (atom {})]
-    (is (= (<mcmd {:foo :bar :app-db app-db} [:baz :quux] % %1 1 2 3 foo %&)
-           (<mcmd {:foo :bar :app-db app-db} [:baz :quux] % %1 1 2 3 foo %&)))
+        app-db (atom {})
+        foo-bar (fn [a] a)]
+    (is (= (<mcmd {:foo :bar :app-db app-db} [:baz :quux] (foo-bar %) %1 1 2 3 foo %&)
+           (<mcmd {:foo :bar :app-db app-db} [:baz :quux] (foo-bar %) %1 1 2 3 foo %&)))
     (is (not= (<mcmd {:foo :bar :app-db app-db} [:baz :quux] % %1 1 2 3 foo %&)
               (<mcmd {:foo :bar :app-db app-db} [:baz :quux] % %2 1 2 3 foo %&)))))
 
