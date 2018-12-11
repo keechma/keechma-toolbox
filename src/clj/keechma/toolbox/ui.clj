@@ -60,23 +60,24 @@
 (defmacro <mcmd [ctx command & args]
   (let [args-base-name (gensym 'arg)
         fn-args (mapv symbol (get-fn-args args-base-name args))
-        mem-args (postwalk (fn [arg]
-                         (cond
-                           (is-pos-arg? arg) (symbol (pos->named args-base-name (get-arg-pos arg)))
-                           (is-rest-arg? arg) (symbol (pos->named args-base-name "rest"))
-                           :else arg))
-                       args)
-        cache-args (->
-                    (postwalk (fn [arg]
-                               (cond
-                                 (is-pos-arg? arg) (str (pos->named generic-arg-prefix (get-arg-pos arg)))
-                                 (is-rest-arg? arg) (str (pos->named generic-arg-prefix "rest"))
-                                 :else arg))
-                                 args)
-                    flatten
-                    vec)
-        result-fn `(fn ~fn-args
-                     (keechma.toolbox.ui/<cmd ~ctx ~command ~@mem-args))]
+        mem-args (prewalk (fn [arg] 
+                            (cond
+                              (is-pos-arg? arg) (symbol (pos->named args-base-name (get-arg-pos arg)))
+                              (is-rest-arg? arg) (symbol (pos->named args-base-name "rest"))
+                              :else arg))
+                           args)
+        cache-args (-> (prewalk (fn [arg]
+                                  (cond
+                                    (is-pos-arg? arg) (str (pos->named generic-arg-prefix (get-arg-pos arg)))
+                                    (is-rest-arg? arg) (str (pos->named generic-arg-prefix "rest"))
+                                    (seq? arg) (vec arg)
+                                    :else arg))
+                                args)
+                       flatten
+                       vec)
+        result-fn
+        `(fn ~fn-args
+           (keechma.toolbox.ui/<cmd ~ctx ~command ~@mem-args))]
     `(keechma.toolbox.ui/memoize-cmd
       ~result-fn
       {:ctx ~ctx
