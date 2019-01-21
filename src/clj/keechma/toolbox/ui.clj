@@ -1,6 +1,6 @@
 (ns keechma.toolbox.ui
   (:require [clojure.string :as str]
-            [clojure.walk :refer [postwalk prewalk]]))
+            [clojure.walk :refer [postwalk prewalk macroexpand-all]]))
 
 (def generic-arg-prefix (gensym 'arg))
 
@@ -57,7 +57,15 @@
       (vec (concat named-args ["&" (pos->named args-base-name "rest")]))
       named-args)))
 
-(defmacro <mcmd [ctx command & args]
+(defn memoize-cmd [& args])
+(defn <cmd [& args])
+
+(defn arg-val [arg]
+  (if (symbol? arg)
+    `(or ~arg (str ~arg)) 
+    arg))
+
+(defn <mcmd* [ctx command args]
   (let [args-base-name (gensym 'arg)
         fn-args (mapv symbol (get-fn-args args-base-name args))
         mem-args (prewalk (fn [arg] 
@@ -73,16 +81,52 @@
                                     (seq? arg) (vec arg)
                                     :else arg))
                                 args)
-                       flatten
                        vec)
         result-fn
         `(fn ~fn-args
-           (keechma.toolbox.ui/<cmd ~ctx ~command ~@mem-args))]
+           (keechma.toolbox.ui/<cmd ~ctx ~command ~@mem-args))
+        cache-fn
+        `(fn [] ~cache-args)]
     `(keechma.toolbox.ui/memoize-cmd
       ~result-fn
       {:ctx ~ctx
        :command ~command
-       :args ~cache-args})))
+       :id ~cache-args
+       :cache-fn ~cache-fn})))
+
+(defmacro <mcmd [ctx command & args]
+  (<mcmd* ctx command args))
        
-(defmacro <mredirect [& args] 
-  `(keechma.toolbox.ui/memoize-redirect ~@args))
+(defn <mredirect* [ctx args] 
+  (let [args-base-name (gensym 'arg)
+        fn-args (mapv symbol (get-fn-args args-base-name args))
+        mem-args (prewalk (fn [arg] 
+                            (cond
+                              (is-pos-arg? arg) (symbol (pos->named args-base-name (get-arg-pos arg)))
+                              (is-rest-arg? arg) (symbol (pos->named args-base-name "rest"))
+                              :else arg))
+                           args)
+        
+        cache-args (-> (prewalk (fn [arg]
+                                  (cond
+                                    (is-pos-arg? arg) (str (pos->named generic-arg-prefix (get-arg-pos arg)))
+                                    (is-rest-arg? arg) (str (pos->named generic-arg-prefix "rest"))
+                                    (seq? arg) (vec arg)
+                                    :else (arg-val arg)))
+                                args)
+                       vec)
+        result-fn
+        `(fn ~fn-args
+           (keechma.ui-component/redirect ~ctx ~@mem-args))
+        cache-fn
+        `(fn [] ~cache-args)]
+    
+    `(keechma.toolbox.ui/memoize-redirect
+      ~result-fn
+      {:ctx ~ctx
+       ;;:id ~cache-args
+       :cache-fn ~cache-fn})))
+
+(defmacro <mredirect [ctx & args]
+  (<mredirect* ctx args))
+

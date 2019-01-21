@@ -16,25 +16,25 @@
   [ctx]
   (:data (deref (ui/current-route ctx))))
 
-(defn memoize-cmd [result-fn {:keys [ctx command args]}]
-  (let [app-db (:app-db ctx)
-        cache-key (hash [ctx command args])
-        existing (get-in @app-db [:internal :ui-fn-cache cache-key])]
+(defn memoize-cmd [result-fn {:keys [ctx command id]}]
+  (let [fn-cache (:fn-cache ctx)
+        cache-key [ctx command id]
+        existing (get @fn-cache cache-key)]
+    (println "CMD >" id)
     (if existing
       existing
       (do
-        (swap! app-db assoc-in [:internal :ui-fn-cache cache-key] result-fn)
+        (swap! fn-cache assoc cache-key result-fn)
         result-fn))))
 
 (defn memoize-redirect
-  ([ctx args] (memoize-redirect ctx args nil)) 
-  ([ctx args action]
-   (let [app-db (:app-db ctx)
-         cache-key (hash [ctx args action])
-         existing (get-in @app-db [:internal :ui-fn-cache cache-key])
-         result-fn #(ui/redirect ctx args action)]
+  ([result-fn {:keys [ctx id cache-fn]}]
+   (let [fn-cache (:fn-cache ctx)
+         cache-key [ctx id]
+         existing (get @fn-cache cache-key)]
+     (println "REDIRECT >" id (cache-fn))
      (if existing
        existing
        (do
-         (swap! app-db assoc-in [:internal :ui-fn-cache cache-key] result-fn)
+         (swap! fn-cache assoc cache-key result-fn)
          result-fn)))))

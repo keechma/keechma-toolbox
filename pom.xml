@@ -3,14 +3,14 @@
   <groupId>keechma</groupId>
   <artifactId>toolbox</artifactId>
   <packaging>jar</packaging>
-  <version>0.1.10</version>
+  <version>0.1.22</version>
   <name>toolbox</name>
   <description>Keechma Toolbox</description>
   <scm>
     <url>https://github.com/retro/keechma-toolbox</url>
     <connection>scm:git:git://github.com/retro/keechma-toolbox.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/retro/keechma-toolbox.git</developerConnection>
-    <tag>a45582811dd3e2c2abc48d7048b06890bc2baf7d</tag>
+    <tag>9c87def51b83e5d1199a000104ec5e6f85fbb02c</tag>
   </scm>
   <build>
     <sourceDirectory>src/clj</sourceDirectory>
@@ -83,12 +83,49 @@
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojurescript</artifactId>
-      <version>1.9.946</version>
+      <version>1.10.339</version>
     </dependency>
     <dependency>
       <groupId>reagent</groupId>
       <artifactId>reagent</artifactId>
       <version>0.7.0</version>
+      <exclusions>
+        <exclusion>
+          <artifactId>react</artifactId>
+          <groupId>cljsjs</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>react-dom</artifactId>
+          <groupId>cljsjs</groupId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>cljsjs</groupId>
+      <artifactId>react-with-addons</artifactId>
+      <version>15.6.1-0</version>
+    </dependency>
+    <dependency>
+      <groupId>cljsjs</groupId>
+      <artifactId>react-dom</artifactId>
+      <version>15.6.1-0</version>
+      <exclusions>
+        <exclusion>
+          <artifactId>react</artifactId>
+          <groupId>cljsjs</groupId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>cljsjs</groupId>
+      <artifactId>react-dom-server</artifactId>
+      <version>15.6.1-0</version>
+      <exclusions>
+        <exclusion>
+          <artifactId>react</artifactId>
+          <groupId>cljsjs</groupId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>binaryage</groupId>
@@ -98,7 +135,7 @@
     <dependency>
       <groupId>keechma</groupId>
       <artifactId>keechma</artifactId>
-      <version>0.3.2</version>
+      <version>0.3.13</version>
       <exclusions>
         <exclusion>
           <artifactId>react-with-addons</artifactId>
@@ -140,6 +177,17 @@
       <groupId>keechma</groupId>
       <artifactId>entitydb</artifactId>
       <version>0.1.4</version>
+    </dependency>
+    <dependency>
+      <groupId>org.clojars.mihaelkonjevic</groupId>
+      <artifactId>cljs-react-test</artifactId>
+      <version>0.1.5</version>
+      <exclusions>
+        <exclusion>
+          <artifactId>react-with-addons</artifactId>
+          <groupId>cljsjs</groupId>
+        </exclusion>
+      </exclusions>
     </dependency>
   </dependencies>
 </project>
