@@ -18,7 +18,7 @@
   [(keyword (namespace target))
    (keyword (name target))])
 
-(defn save-kv-data [app-db target data]
+(defn save-kv-data [app-db {:keys [target] :as datasource} data]
   (assoc-in app-db target data))
 
 (defn insert-relations [edb-schema edb relations]
@@ -28,22 +28,24 @@
                            (edb/insert-item edb-schema acc2 k item))
                          acc items))) edb relations))
 
-(defn save-edb-named-item [app-db edb-schema target data]
+(defn save-edb-named-item [app-db edb-schema {:keys [target] :as datasource} data]
   (let [edb (:entity-db app-db)
-        [entity named-item] (target->edb target)
+        [_ edb-target] target
+        [entity named-item] (target->edb edb-target)
         insert-named-item (partial edb/insert-named-item edb-schema)
         [data relations] (if (= EntityDBWithRelations (type data))
                            [(:data data) (:relations data)]
-                           [data nil])]
+                           [data nil])] 
     (assoc app-db :entity-db
            (if data
              (-> (insert-relations edb-schema edb relations)
                  (insert-named-item entity named-item data))
              (edb/remove-named-item edb entity named-item)))))
 
-(defn save-edb-collection [app-db edb-schema target data]
+(defn save-edb-collection [app-db edb-schema {:keys [target] :as datasource} data]
   (let [edb (:entity-db app-db)
-        [entity collection] (target->edb target)
+        [_ edb-target] target
+        [entity collection] (target->edb edb-target)
         insert-collection (partial edb/insert-collection edb-schema)
         [data relations] (if (= EntityDBWithRelations (type data))
                            [(:data data) (:relations data)]
@@ -54,17 +56,19 @@
                  (insert-collection entity collection data))
              (edb/remove-collection edb entity collection)))))
 
-(defn get-edb-named-item [app-db edb-schema target]
+(defn get-edb-named-item [app-db edb-schema {:keys [target]}]
   (let [edb (:entity-db app-db)
-        [entity named-item] (target->edb target)]
+        [_ edb-target] target
+        [entity named-item] (target->edb edb-target)]
     (edb/get-named-item edb-schema edb entity named-item)))
 
-(defn get-edb-collection [app-db edb-schema target]
+(defn get-edb-collection [app-db edb-schema {:keys [target]}]
   (let [edb (:entity-db app-db)
-        [entity collection] (target->edb target)]
+        [_ edb-target] target
+        [entity collection] (target->edb edb-target)]
     (edb/get-collection edb-schema edb entity collection)))
 
-(defn get-kv-data [app-db target]
+(defn get-kv-data [app-db {:keys [target] :as datasource}]
   (get-in app-db target))
 
 (defn get-meta [app-db datasource-key]
@@ -73,19 +77,41 @@
 (defn save-meta [app-db datasource-key meta]
   (assoc-in app-db [:kv id-key datasource-key] meta))
 
-(defn save-data [app-db edb-schema target data]
-  (let [target-start (first target)]
-    (case target-start
-      :edb/named-item (save-edb-named-item app-db edb-schema (last target) data)
-      :edb/collection (save-edb-collection app-db edb-schema (last target) data)
-      (save-kv-data app-db target data))))
+(defn save-data [app-db edb-schema {:keys [target] :as datasource} data]
+  (let [[target-start] target
+        setter (:set datasource)]
+    (cond
+      (boolean setter)
+      (setter app-db datasource data)
 
-(defn get-data [app-db edb-schema target]
-  (let [target-start (first target)]
-    (case target-start
-      :edb/named-item (get-edb-named-item app-db edb-schema (last target))
-      :edb/collection (get-edb-collection app-db edb-schema (last target))
-      (get-kv-data app-db target))))
+      (= :edb/named-item target-start)
+      (save-edb-named-item app-db edb-schema datasource data)
+
+      (= :edb/collection target-start)
+      (save-edb-collection app-db edb-schema datasource data)
+
+      (boolean target)
+      (save-kv-data app-db datasource data)
+
+      :else app-db)))
+
+(defn get-data [app-db edb-schema {:keys [target] :as datasource}]
+  (let [[target-start] target
+        getter (:get datasource)] 
+    (cond
+      (boolean getter)
+      (getter app-db datasource)
+      
+      (= :edb/named-item target-start)
+      (get-edb-named-item app-db edb-schema datasource)
+      
+      (= :edb/collection target-start)
+      (get-edb-collection app-db edb-schema datasource)
+      
+      (boolean target)
+      (get-kv-data app-db datasource)
+      
+      :else nil)))
 
 (defn remove-pending-datasource [app-db datasource-key]
   (update-in app-db [:kv ::pending] #(disj % datasource-key)))
@@ -93,16 +119,16 @@
 (defn mark-pending! [app-db-atom edb-schema datasources] 
   (swap! app-db-atom assoc-in [:kv ::pending] (set (keys datasources))))
 
-(defn get-meta-and-data [app-db edb-schema datasource-key target]
-  {:data (get-data app-db edb-schema target)
+(defn get-meta-and-data [app-db edb-schema datasource-key datasource]
+  {:data (get-data app-db edb-schema datasource)
    :meta (get-meta app-db datasource-key)})
 
 (defn datasource-params [datasources datasource-key datasource app-db edb-schema]
   (let [params-fn (or (:params datasource) (fn [& args]))
-        prev (get-meta-and-data app-db edb-schema datasource-key (:target datasource))
+        prev (get-meta-and-data app-db edb-schema datasource-key datasource)
         route (get-in app-db [:route :data])
         deps (reduce (fn [acc dep-key]
-                       (assoc acc dep-key (get-data app-db edb-schema (:target (get datasources dep-key)))))
+                       (assoc acc dep-key (get-data app-db edb-schema (get datasources dep-key))))
                      {} (:deps datasource))]
     (params-fn prev route deps)))
 
@@ -112,6 +138,9 @@
 (defn fulfilled-loader [reqs]
   (map (fn [_] ::fulfilled) reqs))
 
+(defn default-loader [reqs]
+  (repeat (count reqs) nil))
+
 (defn datasources->loaders [app-datasources datasources invalid-datasources app-db results-chan edb-schema]
   (let [route-params (get-in app-db [:route :data])]
     (loop [ds datasources
@@ -119,9 +148,9 @@
       (if (not (seq ds))
         loaders
         (let [[key val] (first ds)
-              prev (get-meta-and-data app-db edb-schema key (:target val))
+              prev (get-meta-and-data app-db edb-schema key val)
               params (datasource-params app-datasources key val app-db edb-schema)
-              datasource-loader (or (:loader val) identity)
+              datasource-loader (or (:loader val) default-loader)
               cache-valid-fn? (or (:cache-valid? val) (constantly false))
               cached (get-in app-db [:kv ::req-cache key (hash params)])
               cache-valid? (and cached (cache-valid-fn? (assoc cached :params params :app-db app-db)))
@@ -145,13 +174,15 @@
           (recur (rest ds)
                  (assoc loaders loader
                         (conj current-loaders
-                              {:params params
-                               :prev prev
-                               :datasource key
-                               :app-db app-db
-                               :target target
-                               :cache-valid? cache-valid?
-                               :current-request (get-in @request-cache (cache-key key params))}))) )))))
+                              (merge
+                               val
+                               {:params params
+                                :prev prev
+                                :datasource key
+                                :app-db app-db
+                                :target target
+                                :cache-valid? cache-valid?
+                                :current-request (get-in @request-cache (cache-key key params))})))))))))
 
 (defn call-loader [loader pending-datasources context]
   (let [reqs (vec (loader pending-datasources context))]
@@ -200,6 +231,7 @@
                                               (fn [data & args] data))
                                 c-key (cache-key (:datasource pending-datasource) (:params pending-datasource))]
 
+
                             (swap! request-cache dissoc-in c-key)
                             (if (= ::fulfilled value)
                               (put! results-chan [:ok (assoc pending-datasource :value value)])
@@ -226,6 +258,7 @@
           value-keys (if (map? value) (set (keys value)) #{})
           [res-data res-meta] (if (= #{:data :meta} value-keys) [(:data value) (:meta value)] [value {}])]
 
+
       (reset! app-db-atom
               (-> app-db
                   (save-meta datasource-key
@@ -234,7 +267,7 @@
                               :error nil
                               :meta res-meta
                               :prev (merge {:status nil :error nil :params nil} (dissoc-in (:prev payload) [:meta :prev]))})
-                  (save-data edb-schema (:target payload) res-data)
+                  (save-data edb-schema payload res-data)
                   (remove-pending-datasource datasource-key))))))
 
 (defn start-dependent-loaders! [app-db-atom app-datasources datasources invalid-datasources results-chan edb-schema context]
@@ -260,7 +293,7 @@
                     :meta {}
                     :params (:params payload)
                     :error (:error payload)})
-        (save-data edb-schema (:target payload) nil)
+        (save-data edb-schema payload nil)
         (remove-pending-datasource datasource-key))))
 
 (defn mark-dependent-errors! [app-db app-datasources datasources edb-schema payload]
@@ -271,7 +304,7 @@
                             :prev nil
                             :params nil
                             :error (:error payload)})
-                (save-data edb-schema (:target val) nil)
+                (save-data edb-schema val nil)
                 (remove-pending-datasource datasource-key)))
           app-db datasources))
 

@@ -20,4 +20,4 @@
                        (fn [app-db-atom]
                          (reaction
                           (let [app-db @app-db-atom]
-                            (get-data app-db edb-schema (:target datasource)))))))) {} datasources))
+                            (get-data app-db edb-schema datasource))))))) {} datasources))

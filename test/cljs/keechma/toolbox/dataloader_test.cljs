@@ -11,6 +11,10 @@
             [medley.core :refer [dissoc-in]])
   (:require-macros [cljs.core.async.macros :refer [go]]))
 
+(defn map-loader [loader]
+  (fn [reqs]
+    (map loader reqs)))
+
 (defn promised-datasource
   ([] (promised-datasource nil))
   ([data]
@@ -657,7 +661,7 @@
     (->> (dataloader app-db-atom)
          (p/error (fn [])))
     (async done
- 
+           
            (->> (p/promise (fn [resolve reject]
                              (js/setTimeout
                               (fn []
@@ -719,8 +723,8 @@
         dataloader (core/make-dataloader datasources)
         app-db-atom (atom {:route {:data {}}})
         success-res (reduce (fn [acc [i [l _]]]
-                      (assoc acc l (str i " - " l)))
-                    {} (map-indexed vector ds))]
+                              (assoc acc l (str i " - " l)))
+                            {} (map-indexed vector ds))]
 
     (->> (dataloader app-db-atom)
          (p/error (fn [])))
@@ -733,11 +737,11 @@
                          (let [res (get-in @app-db-atom [:kv :foo])]
                            (is (= success-res res))
                            #_(println "-------------"
-                                    (reduce-kv (fn [acc k v]
-                                                 (let [success-v (get success-res k)]
-                                                   (if (= v success-v)
-                                                     acc
-                                                     (conj acc [success-v v])))) [] res))
+                                      (reduce-kv (fn [acc k v]
+                                                   (let [success-v (get success-res k)]
+                                                     (if (= v success-v)
+                                                       acc
+                                                       (conj acc [success-v v])))) [] res))
                            (done))))
                 (p/error (fn [] (is false)))))))
 
@@ -847,23 +851,23 @@
              (<! (timeout 10))
              (is (= {:current {:id 1 :call-count 1}
                      :list [{:id 2 :call-count 1}]}
-                   (get-in @app-db [:kv :user])))
-            
+                    (get-in @app-db [:kv :user])))
+             
              
              (put! commands-chan [[core/id-key :load-data] [:current-user]])
              (<! (timeout 10))
 
              (is (= {:current {:id 1 :call-count 2}
                      :list [{:id 2 :call-count 1}]}
-                   (get-in @app-db [:kv :user])))
+                    (get-in @app-db [:kv :user])))
 
              (put! commands-chan [[core/id-key :load-data] :all])
              (<! (timeout 10))
 
              (is (= {:current {:id 1 :call-count 3}
                      :list [{:id 2 :call-count 2}]}
-                   (get-in @app-db [:kv :user])))
-            
+                    (get-in @app-db [:kv :user])))
+             
              (app-state/stop! app-state done)))))
 
 (defn make-cached-res-datasources []
@@ -963,4 +967,60 @@
              (is (= {:current nil
                      :list [{:id 2 :call-count 2}]}
                     (get-in @app-db-atom [:kv :user])))
+             (done)))))
+
+(def custom-get-set-datasources
+  {:current-user
+   {:target [:edb/named-item :user/current]
+    :loader (map-loader
+             (fn [{:keys [params]}]
+               (when params
+                 (p/promise (fn [resolve _]
+                              (js/setTimeout #(resolve {:id 1 :email "konjevic@gmail.com" :first "Mihael" :last "Konjevic"}) 100))))))
+    :params (fn [_ {:keys [page id]} _]
+              (when (= :user page) id))}
+
+   :init-current-user
+   {:get (fn [app-db _]
+           (let [edb (:entity-db app-db)]
+             (edb/get-named-item {} edb :user :current)))
+    :set (fn [app-db {:keys [params]} _]
+           (if params
+             (let [edb (:entity-db app-db)
+                   user (edb/get-item-by-id {} edb :user params)]
+               (if user
+                 (assoc app-db :entity-db (edb/insert-named-item {} edb :user :current user))
+                 app-db))
+             app-db)) 
+    :params (fn [_ {:keys [page id]} _]
+              (when (= :user page) id))}
+
+   :users
+   {:target [:edb/collection :user/list]
+    :loader (map-loader
+             (fn [{:keys [params]}]
+               (when params
+                 [{:id 1 :email "konjevic@gmail.com"}
+                  {:id 2 :email "konjevic+1@gmail.com"}])))
+    :params (fn [_ {:keys [page]} _]
+              (= :users page))}})
+
+(deftest custom-get-set
+  (async done
+         (let [dataloader (core/make-dataloader custom-get-set-datasources)
+               app-db-atom (atom {:route {:data {:page :users}}})]
+           (go
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= [{:id 1 :email "konjevic@gmail.com"}
+                     {:id 2 :email "konjevic+1@gmail.com"}]
+                    (edb/get-collection {} (:entity-db @app-db-atom) :user :list)))
+             (swap! app-db-atom assoc-in [:route :data] {:id 1 :page :user})
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:id 1 :email "konjevic@gmail.com"}
+                    (edb/get-named-item {} (:entity-db @app-db-atom) :user :current)))
+             (<! (timeout 100))
+             (is (= {:id 1 :email "konjevic@gmail.com" :first "Mihael" :last "Konjevic"}
+                    (edb/get-named-item {} (:entity-db @app-db-atom) :user :current)))
              (done)))))
