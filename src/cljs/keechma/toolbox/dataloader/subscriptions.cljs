@@ -1,10 +1,9 @@
 (ns keechma.toolbox.dataloader.subscriptions
-  (:require [keechma.toolbox.dataloader.core :refer [get-data get-meta]])
+  (:require [keechma.toolbox.dataloader.core :refer [get-data get-meta]]
+            [keechma.toolbox.dataloader.helpers :as h])
   (:require-macros [reagent.ratom :refer [reaction]]))
 
-(defn map-loader [loader]
-  (fn [reqs]
-    (map loader reqs)))
+(def map-loader h/map-loader)
 
 (defn make-subscriptions
   "Returns a map with subscriptions based on the datasources"

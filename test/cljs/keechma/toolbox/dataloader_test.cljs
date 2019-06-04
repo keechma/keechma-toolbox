@@ -1024,3 +1024,21 @@
              (is (= {:id 1 :email "konjevic@gmail.com" :first "Mihael" :last "Konjevic"}
                     (edb/get-named-item {} (:entity-db @app-db-atom) :user :current)))
              (done)))))
+
+(defn loaders-have-access-to-app-db-datasource [app-db-atom]
+  {:current-user
+   {:target [:kv :current-user]
+    :loader (fn [reqs _ app-db]
+              (is (= app-db @app-db-atom))
+              [{:id 1}])}})
+
+(deftest loaders-have-access-to-app-db
+  (async done
+         (let [app-db-atom (atom {:foo :bar})
+               dataloader (core/make-dataloader (loaders-have-access-to-app-db-datasource app-db-atom))]
+           (go
+             (dataloader app-db-atom)
+             (<! (timeout 10))
+             (is (= {:id 1}
+                    (get-in @app-db-atom [:kv :current-user])))
+             (done)))))

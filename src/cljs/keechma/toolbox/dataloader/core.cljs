@@ -184,8 +184,8 @@
                                 :cache-valid? cache-valid?
                                 :current-request (get-in @request-cache (cache-key key params))})))))))))
 
-(defn call-loader [loader pending-datasources context]
-  (let [reqs (vec (loader pending-datasources context))]
+(defn call-loader [loader pending-datasources context app-db]
+  (let [reqs (vec (loader pending-datasources context app-db))]
     (doseq [[idx req] (map-indexed vector reqs)]
       (let [pending-datasource (get pending-datasources idx)
             c-key (cache-key (:datasource pending-datasource) (:params pending-datasource))]
@@ -213,7 +213,7 @@
       (let [pending-datasources (vec (sort-by #(nil? (:current-request %)) unsorted-pending-datasources))
             pending-datasources-with-current (vec (filter #(not (nil? (:current-request %))) pending-datasources))
             pending-datasources-without-current (vec (filter #(nil? (:current-request %)) pending-datasources))
-            promises (call-loader loader pending-datasources-without-current context)]
+            promises (call-loader loader pending-datasources-without-current context @app-db-atom)]
        
         (doseq [[idx loader-promise] (map-indexed vector (concat (map :current-request pending-datasources-with-current) promises))]
           (let [pending-datasource (get pending-datasources idx)]

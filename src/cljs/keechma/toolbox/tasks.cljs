@@ -113,10 +113,11 @@
         parent-pipeline-id (:pipeline/running ctrl)
         {:keys [stopper version]} (register-task! app-db-atom id producer reducer resolve runner-chan)]
 
-    (add-watch pipelines$ pipelines-watcher-key
-               (fn [_ _ _ new-val]
-                 (when-not (get-in new-val (conj parent-pipeline-id :running?))
-                   (reset! app-db-atom (finish-task! @app-db-atom id ::cancelled)))))
+    (when pipelines$
+      (add-watch pipelines$ pipelines-watcher-key
+                 (fn [_ _ _ new-val]
+                   (when-not (get-in new-val (conj parent-pipeline-id :running?))
+                     (reset! app-db-atom (finish-task! @app-db-atom id ::cancelled))))))
 
     (let [started-at (.getTime (js/Date.))]
       (go-loop [times-invoked 0]
@@ -137,7 +138,8 @@
                 (when (not= app-db-atom reducer-result)
                   (reset! app-db-atom reducer-result))
                 (recur (inc times-invoked)))))
-          (remove-watch pipelines$ pipelines-watcher-key))))))
+          (when pipelines$
+            (remove-watch pipelines$ pipelines-watcher-key)))))))
 
 
 (defn blocking-task-producer
