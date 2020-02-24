@@ -185,11 +185,6 @@ Runs multiple sideffects sequentially:
     (instance? Error err) err
     :else (->Error :default nil err nil)))
 
-(defn ^:private is-promise? [val]
-  (if (or (instance? js/Error val) (instance? Error val))
-    false
-    (= val (p/promise val))))
-
 (defn ^:private promise->chan [promise]
   (let [promise-chan (chan)]
     (->> promise
@@ -212,7 +207,7 @@ Runs multiple sideffects sequentially:
          :promise? true}
         {:value ret-val
          :repr ret-repr
-         :promise? (is-promise? ret-val)}))
+         :promise? (p/promise? ret-val)}))
     (catch :default err
       (if (= ::pipeline-error (:type (.-data err)))
         (throw err)
@@ -243,7 +238,7 @@ Runs multiple sideffects sequentially:
          current-promise (atom nil)
          context (controller/context ctrl)
          running-check-path (flatten [(:pipeline/running ctrl) :running?])]
-     (p/promise
+     (p/create
       (fn [resolve reject]
         (go-loop [block :begin
                   actions begin
@@ -263,7 +258,7 @@ Runs multiple sideffects sequentially:
                   (throw (ex-info (:async-sideffect pipeline-errors) {:type ::pipeline-error})))
                 (if sideffect?
                   (let [{:keys [value error?]} (call-sideffect resolved-value ctrl app-db-atom pipelines$)
-                        resolved-value (if (is-promise? value) (<! (promise->chan value)) value)]
+                        resolved-value (if (p/promise? value) (<! (promise->chan value)) value)]
                     (cond
                       (and error? (= block :begin))
                       (if (seq rescue)

@@ -20,7 +20,7 @@
   ([data]
    (fn [params]
      (map (fn [loader-params]
-            (p/promise (fn [resolve reject]
+            (p/create (fn [resolve reject]
                          (let [value (or data (:params loader-params))]
                            (js/setTimeout #(resolve value) 1)))))
           params))))
@@ -121,7 +121,7 @@
     :deps   [:jwt]
     :loader (fn [params]
               (map (fn [_]
-                     (p/promise (fn [_ reject]
+                     (p/create (fn [_ reject]
                                   (js/setTimeout #(reject error-404) 1)))) params))}
 
    :current-user-favorites
@@ -429,7 +429,7 @@
                     (map (fn [r]
                            (when-let [params (:params r)]
                              (swap! tracking-atom inc)
-                             (p/promise (fn [resolve reject]
+                             (p/create (fn [resolve reject]
                                           (js/setTimeout #(resolve {:some :data}) 10)))))
                          reqs))
           :params (fn [_ _ _]
@@ -596,7 +596,7 @@
                     (map (fn [r]
                            (let [u-delay (or (get-in r [:params :delay]) 0)
                                  user (get-in r [:params :user])]
-                             (p/promise (fn [resolve reject]
+                             (p/create (fn [resolve reject]
                                           (js/setTimeout
                                            (fn []
                                              (swap! log conj user)
@@ -616,7 +616,7 @@
            (->> (dataloader app-db-atom)
                 (p/map (fn []
                          (is (= 2 (get-in @app-db-atom [:kv :user])))
-                         (p/promise (fn [resolve reject]
+                         (p/create (fn [resolve reject]
                                       (js/setTimeout resolve 100)))))
                 (p/map (fn []
                          (is (= [2 1] @log))
@@ -631,7 +631,7 @@
                       (map (fn [r]
                              (let [u-delay (or (get-in r [:params :user-delay]) 0)
                                    user (get-in r [:params :user])]
-                               (p/promise (fn [resolve reject]
+                               (p/create (fn [resolve reject]
                                             (js/setTimeout
                                              (fn []
                                                (swap! log conj user)
@@ -645,7 +645,7 @@
                                  (swap! product-id inc)
                                  (let [p-delay (or (get-in r [:params :product-delay]) 0)
                                        product {:id @product-id :user (get-in r [:params :user])}]
-                                   (p/promise (fn [resolve reject]
+                                   (p/create (fn [resolve reject]
                                                 (js/setTimeout
                                                  (fn []
                                                    (swap! log conj product)
@@ -662,7 +662,7 @@
          (p/error (fn [])))
     (async done
            
-           (->> (p/promise (fn [resolve reject]
+           (->> (p/create (fn [resolve reject]
                              (js/setTimeout
                               (fn []
                                 (swap! app-db-atom assoc-in [:route :data] {:user-delay 0 :product-delay 0 :user 2})
@@ -671,7 +671,7 @@
                 (p/map #(dataloader app-db-atom))
                 (p/map (fn []
                          (is (= 2 (get-in @app-db-atom [:kv :user])))
-                         (p/promise (fn [resolve reject]
+                         (p/create (fn [resolve reject]
                                       (js/setTimeout resolve 100)))))
                 (p/map (fn []
                          (is (= [1 2 {:id 2 :user 2} {:id 1 :user 1}] @log))
@@ -686,7 +686,7 @@
      (let [d (get-in r [:params :delay])
            v (get-in r [:params :value])]
        
-       (p/promise (fn [resolve reject]
+       (p/create (fn [resolve reject]
                     (js/setTimeout #(resolve v) d)))))
    reqs))
 
@@ -731,7 +731,7 @@
     
 
     (async done
-           (->> (p/promise (fn [resolve _] (js/setTimeout resolve 50)))
+           (->> (p/create (fn [resolve _] (js/setTimeout resolve 50)))
                 (p/map #(dataloader app-db-atom {:invalid-datasources #{"A" "C" "E"}}))
                 (p/map (fn []
                          (let [res (get-in @app-db-atom [:kv :foo])]
@@ -975,7 +975,7 @@
     :loader (map-loader
              (fn [{:keys [params]}]
                (when params
-                 (p/promise (fn [resolve _]
+                 (p/create (fn [resolve _]
                               (js/setTimeout #(resolve {:id 1 :email "konjevic@gmail.com" :first "Mihael" :last "Konjevic"}) 100))))))
     :params (fn [_ {:keys [page id]} _]
               (when (= :user page) id))}

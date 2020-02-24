@@ -369,15 +369,12 @@
        (let [dataloader-id (gensym :dataloader)]
          (clear-cache-for-invalidated-datasources! app-db-atom invalid-datasources)
          (reset! active-dataloader-id-atom dataloader-id)
-         (p/promise
-          (fn [resolve reject on-cancel]
+         (p/create
+          (fn [resolve reject]
             (let [running? (atom true) 
                   results-chan (chan)
                   plan (datasources-load-plan @app-db-atom datasources datasources-order edb-schema invalid-datasources)
                   start-nodes (filter #(and (:reload? (get plan %)) (:deps-fulfilled? (get plan %))) (keys plan))]
-
-              (when (fn? on-cancel) (on-cancel #(swap! running? not)))
-
               (mark-pending! app-db-atom edb-schema (select-keys datasources (filter #(:reload? (get plan %)) (keys plan))))
               (start-loaders! app-db-atom datasources (select-keys datasources start-nodes) invalid-datasources results-chan edb-schema context)
               

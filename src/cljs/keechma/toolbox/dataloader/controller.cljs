@@ -107,7 +107,7 @@ Dataloader can be manually triggered by sending the `:load-data` command to the 
  ([data]
   (fn [params]
     (map (fn [loader-params]
-           (p/promise (fn [resolve reject]
+           (p/create (fn [resolve reject]
                         (let [value (or data (:params loader-params))]
                           (js/setTimeout #(resolve value) 1)))))
          params))))

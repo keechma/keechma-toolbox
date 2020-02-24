@@ -14,7 +14,7 @@
 
 (defn delay-pipeline
   ([] (delay-pipeline 10))
-  ([msec] (p/promise (fn [resolve _] (js/setTimeout resolve msec)))))
+  ([msec] (p/create (fn [resolve _] (js/setTimeout resolve msec)))))
 
 (defn fn-returning-value []
   {:baz :qux})
@@ -145,7 +145,7 @@
 (def promise-error (js/Error. "Promise Rejected"))
 
 (defn fn-promise-rejecting []
-  (p/promise (fn [_ reject]
+  (p/create (fn [_ reject]
                (reject promise-error))))
 
 (defn make-fn-promise-rejecting-pipeline-controller [done]

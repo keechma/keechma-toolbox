@@ -146,7 +146,7 @@
   ([producer id reducer ctrl app-db-atom value]
    (blocking-task-producer producer id reducer ctrl app-db-atom value nil))
   ([producer id reducer ctrl app-db-atom value pipelines$]
-   (p/promise (fn [resolve reject]
+   (p/create (fn [resolve reject]
                 (task-loop {:reducer reducer
                             :producer producer
                             :ctrl ctrl

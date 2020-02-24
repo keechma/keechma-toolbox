@@ -8,10 +8,10 @@
 
 (defn promisify [method]
   (fn [url opts]
-    (p/promise
-     (fn [resolve reject on-cancel]
-       (let [r (method url (merge opts {:handler resolve :error-handler (make-error-handler reject)}))]
-         (when (fn? on-cancel) (on-cancel #(ajax/abort r))))))))
+    (p/create
+     (fn [resolve reject]
+       (method url (merge opts {:handler resolve
+                                :error-handler (make-error-handler reject)}))))))
 
 (def GET (promisify ajax/GET))
 (def HEAD (promisify ajax/HEAD))
