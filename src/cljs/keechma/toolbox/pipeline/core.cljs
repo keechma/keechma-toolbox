@@ -7,7 +7,7 @@
 
 (defrecord Error [type message payload cause])
 
-(defn ^:private error! [type payload]
+(defn error! [type payload]
   (->Error type nil payload nil))
 
 (defprotocol ISideffect
@@ -180,17 +180,17 @@ Runs multiple sideffects sequentially:
 (defn cancel-pipelines! [pipeline-filter]
   (->CancelPipelinesSideffect pipeline-filter))
 
-(defn ^:private process-error [err]
+(defn process-error [err]
   (cond
     (instance? Error err) err
     :else (->Error :default nil err nil)))
 
-(defn ^:private is-promise? [val]
+(defn is-promise? [val]
   (if (or (instance? js/Error val) (instance? Error val))
     false
     (= val (p/promise val))))
 
-(defn ^:private promise->chan [promise]
+(defn promise->chan [promise]
   (let [promise-chan (chan)]
     (->> promise
          (p/map (fn [v] (put! promise-chan (if (nil? v) ::nil v))))
@@ -202,7 +202,7 @@ Runs multiple sideffects sequentially:
 
 (declare run-pipeline)
 
-(defn ^:private action-ret-val [action ctrl context app-db-atom value error pipelines$]
+(defn action-ret-val [action ctrl context app-db-atom value error pipelines$]
   (try
     (let [ret (if (nil? error) (action value @app-db-atom context) (action value @app-db-atom context error))
           ret-val (:val ret)
@@ -219,7 +219,7 @@ Runs multiple sideffects sequentially:
         {:value (process-error err)
          :promise? false}))))
 
-(defn ^:private extract-nil [value]
+(defn extract-nil [value]
   (if (= ::nil value) nil value))
 
 (defn call-sideffect [sideffect ctrl app-db-atom pipelines$]
@@ -235,7 +235,7 @@ Runs multiple sideffects sequentially:
     true
     (get-in @pipelines$ running-check-path)))
 
-(defn ^:private run-pipeline
+(defn run-pipeline
   ([pipeline ctrl app-db-atom value]
    (run-pipeline pipeline ctrl app-db-atom value nil))
   ([pipeline ctrl app-db-atom value pipelines$]
@@ -298,7 +298,7 @@ Runs multiple sideffects sequentially:
                            (if (nil? resolved-value) prev-value resolved-value)
                            error))))))))))))
 
-(defn ^:private make-pipeline [pipeline]
+(defn make-pipeline [pipeline]
   (with-meta (partial run-pipeline pipeline) {:pipeline? true}))
 
 (defn exclusive [pipeline]
