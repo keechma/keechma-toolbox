@@ -2,7 +2,7 @@
   (:require [keechma.ui-component :as ui]))
 
 (defn sub>
-  "Read and defer a component subscription"
+  "Read and deref a component subscription"
   [ctx subscription & args]
   (deref (ui/subscription ctx subscription args)))
 
