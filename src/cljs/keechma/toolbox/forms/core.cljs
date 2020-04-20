@@ -6,7 +6,7 @@
 (defn form-type [form & args] (type form))
 
 (defmulti get-data
-  "This function should return either the initial form data or a promise that will resolve to the inital form data."
+  "This function should return either the initial form data or a promise that will resolve to the initial form data."
   form-type)
 (defmulti submit-data
   "This function should return either the saved form data or a promise that will resolve to the saved form data"
